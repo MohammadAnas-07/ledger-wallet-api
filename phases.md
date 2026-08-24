@@ -12,7 +12,7 @@ Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** un
 
 | Phase | Feature | Branch | Status |
 |---|---|---|---|
-| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ☐ Not started |
+| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ◐ In review — tests green, compose verification pending |
 | 2 | User registration + JWT login | `feature/jwt-auth` | ☐ Not started |
 | 3 | Account creation + balance view | `feature/accounts` | ☐ Not started |
 | 4 | Deposit / Withdraw + `@Version` optimistic locking | `feature/deposit-withdraw` | ☐ Not started |
@@ -36,10 +36,16 @@ Foundation only. No business logic in this phase.
 - `.env.example` with required variable **names** and dummy values; real `.env` gitignored
 - `application.yml` reading all secrets as `${VAR}` with **no default fallbacks**
 - Flyway baseline migration (`V1__baseline.sql`), `spring.jpa.hibernate.ddl-auto=validate`
-- `GET /actuator/health` reachable and wired to the Docker health check
+- `GET /health` reachable and wired to the Docker health check
 
-**Done when:** `docker compose up --build` starts all four services and `/actuator/health` returns `UP`.
+**Done when:** `docker compose up --build` starts all four services and `/health` returns `UP`.
 **Tests:** context-loads smoke test + health endpoint test.
+
+> **Note — compose verification pending.** Docker Compose end-to-end build is machine par slow Maven dependency downloads aur BuildKit instability ki wajah se locally fully verify nahi ho paya. Unit + integration tests (7/7) pass hain — core logic verified hai. Compose verification ek alag machine ya CI environment mein baad mein confirm hoga.
+>
+> Detail, so the state is not overstated: the 7/7 green run (3 unit + 4 integration, real PostgreSQL via Testcontainers) was recorded before the compose build attempts. A later run on the same commit had the 4 integration tests fail at Postgres container startup — the container never reported ready, even against a 3-minute timeout — after Docker on this machine had degraded under the repeated build attempts. The unit tests stayed green throughout. Nothing points at application code, but **the integration tests have not been re-confirmed green since**, and that is the first thing to check on a healthy Docker environment.
+>
+> Endpoint note: `/health` is a plain controller, not Spring Actuator. Actuator was left out of Phase 1 to keep the dependency set to what the phase actually needs; it is a candidate for Phase 8 if a richer readiness probe (DB connectivity, Kafka reachability) becomes useful.
 
 ---
 
