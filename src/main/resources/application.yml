@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: ledger-wallet-api
+
+  datasource:
+    # No default values: a fallback on a secret is a hardcoded secret (rules.md 2.5).
+    # Startup fails loudly if these are unset, which is the intended behaviour.
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Hibernate only checks that it matches and never
+      # mutates it, in any environment.
+      ddl-auto: validate
+    # Keeping the persistence context open across view rendering hides lazy loads
+    # behind the web layer and makes transaction boundaries unclear.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    # Never expose stack traces or internal messages in an HTTP response.
+    include-stacktrace: never
+    include-message: never
+
+logging:
+  level:
+    root: INFO
