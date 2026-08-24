@@ -27,7 +27,12 @@ services:
     image: postgres:16-alpine
     container_name: ledger-wallet-db
     ports:
-      - "5432:5432"
+      # Host-side port only. Configurable because a native PostgreSQL service on the
+      # developer machine may already hold 5432 — on Windows both can bind, and the
+      # native server silently wins localhost connections, which surfaces as
+      # "role does not exist" against a database that is actually fine.
+      # Inside the compose network the app still reaches the container on db:5432.
+      - "${DB_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
