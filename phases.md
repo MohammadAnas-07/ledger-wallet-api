@@ -1,0 +1,203 @@
+# Phased Roadmap — Wallet & Ledger API
+
+**Companion documents:** [prd.md](prd.md) · [architecture.md](architecture.md) · [rules.md](rules.md)
+
+Two stages. **Backend is completed fully before frontend work begins.** Within Stage 1, one phase = one feature branch = one vertical slice (API + logic + persistence + tests + docs), merged before the next begins.
+
+Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** unit tests written and passing, **(b)** endpoint manually verified via Postman/curl, **(c)** clear commit messages — plus explicit confirmation before any merge.
+
+---
+
+## Stage 1: Backend — Current Focus
+
+| Phase | Feature | Branch | Status |
+|---|---|---|---|
+| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ☐ Not started |
+| 2 | User registration + JWT login | `feature/jwt-auth` | ☐ Not started |
+| 3 | Account creation + balance view | `feature/accounts` | ☐ Not started |
+| 4 | Deposit / Withdraw + `@Version` optimistic locking | `feature/deposit-withdraw` | ☐ Not started |
+| 5 | Transfer between accounts (double-entry, concurrency) | `feature/transfer-double-entry` | ☐ Not started |
+| 6 | Transaction history / statement | `feature/transaction-history` | ☐ Not started |
+| 7 | Kafka event publishing + consumer | `feature/kafka-events` | ☐ Not started |
+| 8 | Backend hardening (rate limiting, security review, load test) | `feature/hardening` | ☐ Not started |
+
+---
+
+### Phase 1 — Project Setup
+
+**Branch:** `feature/project-setup`
+
+Foundation only. No business logic in this phase.
+
+- Spring Boot 3.4.x project (Maven), Java 21 — dependencies: Web, Security, Data JPA, Validation, Kafka, PostgreSQL driver, Flyway, Lombok
+- Package structure by feature, not by layer-only: `auth`, `account`, `ledger`, `common`
+- `git init`, `.gitignore` (target/, `.env`, IDE files) committed **first** — before any code
+- `docker-compose.yml`: `app` + `db` (postgres:16-alpine) + `kafka` + `zookeeper`, with health checks and a named volume for Postgres
+- `.env.example` with required variable **names** and dummy values; real `.env` gitignored
+- `application.yml` reading all secrets as `${VAR}` with **no default fallbacks**
+- Flyway baseline migration (`V1__baseline.sql`), `spring.jpa.hibernate.ddl-auto=validate`
+- `GET /actuator/health` reachable and wired to the Docker health check
+
+**Done when:** `docker compose up --build` starts all four services and `/actuator/health` returns `UP`.
+**Tests:** context-loads smoke test + health endpoint test.
+
+---
+
+### Phase 2 — User Registration + JWT Login
+
+**Branch:** `feature/jwt-auth`
+**PRD:** [§3.1](prd.md#31-user-registration--jwt-login) · **Architecture:** [§5](architecture.md#5-authentication--authorization-flow)
+
+- `User` entity + Flyway migration; unique index on `email`
+- `POST /api/v1/auth/register` — BCrypt (strength 12), `409` on duplicate email
+- `POST /api/v1/auth/login` — issue HS256 JWT, 15 min TTL, secret from env
+- `JwtAuthenticationFilter` (`OncePerRequestFilter`), placed before `UsernamePasswordAuthenticationFilter`
+- `SecurityConfig`: stateless, CSRF disabled, `.anyRequest().authenticated()`, only `/auth/**` and `/actuator/health` public
+- `@RestControllerAdvice` with the standard error body; JSON `401`/`403` handlers (never an HTML login page)
+
+**Done when:** a protected endpoint returns `401` without a token and `200` with a valid one.
+**Tests:** password is hashed and never returned; duplicate email → `409`; bad credentials → generic `401` (identical message for unknown email and wrong password); expired token → `401`; tampered signature → `401`.
+
+---
+
+### Phase 3 — Account Creation + Balance View
+
+**Branch:** `feature/accounts`
+**PRD:** [§3.2](prd.md#32-account-creation-multiple-wallets-per-user)
+
+Single account operations only — **no money movement yet.**
+
+- `Account` entity + migration: `balance NUMERIC(19,2) NOT NULL DEFAULT 0`, `CHECK (balance >= 0)`, `version BIGINT`, FK to `users`
+- `@Version` field is **declared here** but its behaviour is only exercised in Phase 4
+- `POST /api/v1/accounts` — create a wallet for the caller (one user → many accounts)
+- `GET /api/v1/accounts` — list the caller's own wallets only
+- `GET /api/v1/accounts/{id}` — `403` if not the caller's
+- Ownership check helper in the **service layer**; caller identity from `SecurityContext`, never from the request body
+
+**Done when:** a user can create multiple wallets and cannot see anyone else's.
+**Tests:** ownership enforcement (`403` on another user's account); listing is scoped to the caller; new account starts at `0.00`; entity never serialized directly (DTOs only).
+
+---
+
+### Phase 4 — Deposit / Withdraw
+
+**Branch:** `feature/deposit-withdraw`
+**PRD:** [§3.3](prd.md#33-deposit--withdraw) · **Architecture:** [§2](architecture.md#2-entity-design), [§3](architecture.md#3-concurrency-strategy--optimistic-locking-via-version)
+
+**This is where optimistic locking and double-entry first go to work.**
+
+- `Transaction` + `LedgerEntry` entities and migrations
+- Reserved **system account** seeded via migration — deposits and withdrawals post against it, so even external money movement produces two entries and satisfies the ledger invariant
+- `POST /api/v1/accounts/{id}/deposit` and `.../withdraw`
+- Every operation writes a `Transaction` header + **two** `LedgerEntry` rows inside one `@Transactional` boundary
+- Insufficient funds → `422 INSUFFICIENT_FUNDS`, **no ledger row written**
+- `OptimisticLockingFailureException` → `409 CONCURRENT_MODIFICATION` via the advice
+- Idempotency key accepted and enforced (unique index) — a retried request must not move money twice
+
+**Done when:** balances change correctly, and every operation leaves the ledger summing to zero.
+**Tests:** unit tests for amount validation and insufficient funds; **integration test (Testcontainers, real PostgreSQL): N concurrent withdrawals where total demand exceeds the balance — only the affordable subset succeeds, balance never goes negative, ledger sums to zero.** Retried idempotency key does not double-apply.
+
+---
+
+### Phase 5 — Transfer Between Accounts
+
+**Branch:** `feature/transfer-double-entry`
+**PRD:** [§3.4](prd.md#34-transfer-between-accounts-double-entry-atomic) · **Correctness:** [§5](prd.md#5-correctness-guarantee)
+
+**The centrepiece of the project.** Everything before this exists to make this phase provable.
+
+- `POST /api/v1/transfers` — `{ fromAccountId, toAccountId, amount, idempotencyKey }`
+- One `@Transactional` boundary: debit entry + credit entry + both balance updates commit together or not at all
+- Both accounts optimistically locked via `@Version`; conflict → rollback → `409`
+- Ownership checked on the **source** account only — you may credit anyone, but only debit yourself
+- Rejected before any write: self-transfer, non-positive amount, unknown account, unauthorized source
+- Bounded retry (`@Retryable`, 3 attempts with backoff) — safe because the idempotency key prevents double-spend
+
+**Done when:** the concurrency suite passes **repeatedly** with zero imbalance. Passing 19 times out of 20 means this phase is not done.
+
+**Tests — the flagship suite** (Testcontainers, real PostgreSQL; `ExecutorService` + `CountDownLatch`):
+- N threads transferring across a pool of accounts → total system balance unchanged; every account reconciles with its ledger; nothing negative
+- Concurrent transfers into and out of the same account → no lost update
+- Version conflict rolls back cleanly with no partial write
+- All three invariants asserted as post-conditions on every money-movement test
+- Multiple iterations per run — an intermittent failure here is a real bug, never a flaky test
+
+---
+
+### Phase 6 — Transaction History / Statement
+
+**Branch:** `feature/transaction-history`
+**PRD:** [§3.5](prd.md#35-transaction-history--statement)
+
+- `GET /api/v1/accounts/{id}/transactions?page=&size=&from=&to=` — paginated, newest first
+- `GET /api/v1/transactions/{id}` — single transaction with both ledger entries
+- Read-only. Ledger entries are append-only — never updated, never deleted
+- Date filtering via JPA `Specification`, **not** string-built queries; sort fields validated against an allowlist
+- Index on `(account_id, created_at)` for the statement query
+
+**Done when:** a user can read their own statement and no one else's.
+**Tests:** scoping (`403` on another user's statement); pagination and ordering; date-range filtering; sum of returned entries reconciles with the stored balance.
+
+---
+
+### Phase 7 — Kafka Event Publishing + Consumer
+
+**Branch:** `feature/kafka-events`
+**PRD:** [§3.6](prd.md#36-kafka-event-publish-on-every-transaction) · **Architecture:** [§4](architecture.md#4-kafka-topic-design)
+
+- Topic `transaction-events` created explicitly (3 partitions, key = accountId, auto-create disabled)
+- Producer with `acks=all`, publishing **post-commit** via `@TransactionalEventListener(phase = AFTER_COMMIT)` — never inside the transaction
+- `AuditLogConsumer` (`@KafkaListener`, group `audit-log`) writing an immutable audit record, idempotent on `eventId`
+- Failures route to `transaction-events.DLT` rather than blocking the partition
+
+**Done when:** a committed transfer produces exactly one event and the consumer logs/persists it; a rolled-back transfer produces **zero**.
+**Tests:** rollback emits no event (Invariant 5); committed transaction emits exactly one with a correct payload; redelivery of the same `eventId` does not duplicate the audit record.
+
+---
+
+### Phase 8 — Final Backend Hardening
+
+**Branch:** `feature/hardening`
+
+No new features. Proving what exists is sound.
+
+- **Rate limiting on auth endpoints** — `/auth/login` and `/auth/register` (Bucket4j or a filter); brute-force protection, `429 Too Many Requests`
+- **Full security review against the [rules.md §5 checklist](rules.md#5-pre-merge-checklist)** — every endpoint audited: authenticated by default, ownership enforced in the service layer, all DTOs validated, no entity serialized to the wire, no secret in the repo or in logs
+- **Load test the transfer endpoint** for race conditions — sustained concurrent traffic, then assert the invariants against the database afterwards; confirm the ledger still sums to zero
+- Verify `docker compose up` works end to end from a clean clone
+- README with setup instructions and a demo walkthrough
+- Confirm [architecture.md](architecture.md) matches what was actually built; correct it where it drifted
+
+**Done when:** all six MVP features work end to end, the concurrency suite passes repeatedly, and every [PRD success criterion](prd.md#7-success-criteria) is checked off.
+
+---
+
+## Stage 2: Frontend — Later, Separate Effort
+
+> **Frontend kaam Stage 1 complete hone se pehle shuru nahi hoga — koi bhi UI-related task is beech mein aaye to usse Stage 2 mein park karo, abhi mat karo.**
+
+This applies without exception, including to small or "quick" UI requests: a login screen, a single page, a bit of styling, "just to see how it looks." Anything UI-related that surfaces during Stage 1 gets written down in the parking lot below and left there. Backend correctness is the entire point of this project; a half-built UI competing for attention is exactly what would compromise it.
+
+**Trigger:** Stage 2 begins **only** when every Stage 1 phase (1–8) is complete, merged, and tested — not when the backend "mostly works."
+
+**When triggered:**
+- `design.md` (Apple-minimalist reference) is loaded **at that point**, not before. It is deliberately not part of the current context.
+- The detailed phase breakdown for Stage 2 gets written then, once the real API contract is settled — planning UI phases against endpoints that may still shift would just be rework.
+
+**Planned scope (outline only, not a commitment):**
+- Login screen
+- Account balance / wallet list view
+- Transfer form
+- Transaction history table
+
+**Not in Stage 2 either:** anything on the [PRD out-of-scope list](prd.md#4-out-of-scope) — multi-currency, payment gateways, admin panel, notifications.
+
+---
+
+### Parking Lot
+
+UI ideas that come up during Stage 1 go here. Written down, not acted on.
+
+| Idea | Noted on |
+|---|---|
+| _(empty)_ | |

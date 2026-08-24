@@ -1,0 +1,49 @@
+# Compiled output
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+
+# Maven
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+
+# Secrets and local environment
+.env
+.env.local
+*.env
+!.env.example
+application-local.yml
+application-local.properties
+*.pem
+*.key
+*.p12
+
+# IDE — IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# IDE — Eclipse
+.classpath
+.project
+.settings/
+.apt_generated/
+
+# IDE — VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
