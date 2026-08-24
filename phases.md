@@ -12,7 +12,7 @@ Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** un
 
 | Phase | Feature | Branch | Status |
 |---|---|---|---|
-| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ☐ Not started |
+| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ◐ In review — tests green, compose verification pending |
 | 2 | User registration + JWT login | `feature/jwt-auth` | ☐ Not started |
 | 3 | Account creation + balance view | `feature/accounts` | ☐ Not started |
 | 4 | Deposit / Withdraw + `@Version` optimistic locking | `feature/deposit-withdraw` | ☐ Not started |
@@ -36,10 +36,20 @@ Foundation only. No business logic in this phase.
 - `.env.example` with required variable **names** and dummy values; real `.env` gitignored
 - `application.yml` reading all secrets as `${VAR}` with **no default fallbacks**
 - Flyway baseline migration (`V1__baseline.sql`), `spring.jpa.hibernate.ddl-auto=validate`
-- `GET /actuator/health` reachable and wired to the Docker health check
+- `GET /health` reachable and wired to the Docker health check
 
-**Done when:** `docker compose up --build` starts all four services and `/actuator/health` returns `UP`.
+**Done when:** `docker compose up --build` starts all four services and `/health` returns `UP`.
 **Tests:** context-loads smoke test + health endpoint test.
+
+> **Note — compose verification pending.** Docker Compose end-to-end build is machine par slow Maven dependency downloads aur BuildKit instability ki wajah se locally fully verify nahi ho paya. Unit + integration tests (7/7) pass hain — core logic verified hai. Compose verification ek alag machine ya CI environment mein baad mein confirm hoga.
+>
+> **Test status: 7/7 green, re-confirmed on a fresh Docker engine** (3 unit + 4 integration, the latter against real PostgreSQL via Testcontainers). An intermediate run had the integration tests fail at Postgres container startup, but that was Docker on this machine degrading under repeated image-build attempts, not application code — a restart of the engine and the same commit returned 7/7.
+>
+> Worth carrying into Phase 4: on this machine the Postgres container took **1m 46s** to report ready. Testcontainers' 60s default would have failed that run, and `IntegrationTestBase` raises the startup timeout to 3 minutes for exactly that reason. The concurrency suites in Phases 4–5 will do far more container work, so this budget needs revisiting there rather than being assumed.
+>
+> Manual verification (rules.md definition of complete, item b) was done by running the app directly via `mvn spring-boot:run` against the `db` container: `GET /health` returned `200 {"status":"UP"}` and a protected path returned `401`. What remains unverified is only the full `docker compose up --build` stack, since the application image itself never finished building here.
+>
+> Endpoint note: `/health` is a plain controller, not Spring Actuator. Actuator was left out of Phase 1 to keep the dependency set to what the phase actually needs; it is a candidate for Phase 8 if a richer readiness probe (DB connectivity, Kafka reachability) becomes useful.
 
 ---
 
