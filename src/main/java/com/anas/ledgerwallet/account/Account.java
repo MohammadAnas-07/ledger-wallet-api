@@ -32,9 +32,16 @@ public class Account {
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    /**
+     * Null only for the system account, which nobody owns. That is what keeps it
+     * unreachable through the API: {@link #isOwnedBy} can never return true for it.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private User owner;
+
+    @Column(name = "is_system", nullable = false)
+    private boolean system;
 
     @Column(name = "account_number", nullable = false, unique = true, length = 24)
     private String accountNumber;
@@ -76,10 +83,38 @@ public class Account {
      * True when this account belongs to the given user.
      *
      * <p>Lives on the entity so every caller asks the same question the same way,
-     * rather than each one re-deriving the comparison.
+     * rather than each one re-deriving the comparison. Returns false for the system
+     * account, which has no owner.
      */
     public boolean isOwnedBy(UUID userId) {
-        return owner.getId().equals(userId);
+        return owner != null && owner.getId().equals(userId);
+    }
+
+    public boolean isSystem() {
+        return system;
+    }
+
+    /**
+     * Whether this account can afford the amount.
+     *
+     * <p>The system account is exempt: it is the counterparty for money entering and
+     * leaving the system, so its balance is the negative of everything users hold and
+     * is expected to run below zero.
+     */
+    public boolean hasSufficientFunds(BigDecimal amount) {
+        return system || balance.compareTo(amount) >= 0;
+    }
+
+    /**
+     * Applies a signed movement to the balance.
+     *
+     * <p>Callers check {@link #hasSufficientFunds} first. This method does not
+     * re-check, because the decision belongs with the caller that also writes the
+     * ledger entries — the two must agree, and the database CHECK constraint is the
+     * backstop if they ever do not.
+     */
+    public void applyMovement(BigDecimal signedAmount) {
+        this.balance = this.balance.add(signedAmount);
     }
 
     public UUID getId() {
