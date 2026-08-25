@@ -62,7 +62,7 @@ public class AccountService {
      * rather than sequential numbers, so there is nothing to enumerate, and the
      * clearer status is what architecture.md documents.
      */
-    Account loadOwnedAccount(UUID accountId, UUID callerId) {
+    public Account loadOwnedAccount(UUID accountId, UUID callerId) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 

@@ -2,10 +2,12 @@ package com.anas.ledgerwallet.common.error;
 
 import com.anas.ledgerwallet.account.AccountNotFoundException;
 import com.anas.ledgerwallet.auth.EmailAlreadyRegisteredException;
+import com.anas.ledgerwallet.ledger.InsufficientFundsException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -78,6 +80,35 @@ public class GlobalExceptionHandler {
 
         return build(HttpStatus.FORBIDDEN, "FORBIDDEN",
                 "You do not have access to this resource", request);
+    }
+
+    /**
+     * The request was well-formed and authorised, but a business rule refused it.
+     *
+     * <p>422 rather than 400: nothing about the payload is wrong, so a client cannot
+     * fix it by correcting the request. No ledger entry was written.
+     */
+    @ExceptionHandler(InsufficientFundsException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientFunds(
+            InsufficientFundsException e, HttpServletRequest request) {
+
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, "INSUFFICIENT_FUNDS",
+                e.getMessage(), request);
+    }
+
+    /**
+     * Two writers raced for the same account and this one lost.
+     *
+     * <p>Not an error in the code: it is optimistic locking doing its job. The whole
+     * transaction rolled back, nothing partial was written, and the caller may retry —
+     * safely, if they sent an idempotency key (architecture.md 3).
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(
+            OptimisticLockingFailureException e, HttpServletRequest request) {
+
+        return build(HttpStatus.CONFLICT, "CONCURRENT_MODIFICATION",
+                "The account was modified concurrently; please retry", request);
     }
 
     @ExceptionHandler(Exception.class)
