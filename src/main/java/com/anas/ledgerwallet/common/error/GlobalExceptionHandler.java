@@ -1,5 +1,6 @@
 package com.anas.ledgerwallet.common.error;
 
+import com.anas.ledgerwallet.account.AccountNotFoundException;
 import com.anas.ledgerwallet.auth.EmailAlreadyRegisteredException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
@@ -7,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -55,6 +57,27 @@ public class GlobalExceptionHandler {
 
         return build(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
                 "Invalid email or password", request);
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAccountNotFound(
+            AccountNotFoundException e, HttpServletRequest request) {
+
+        return build(HttpStatus.NOT_FOUND, "ACCOUNT_NOT_FOUND", e.getMessage(), request);
+    }
+
+    /**
+     * The caller is authenticated but the resource is not theirs.
+     *
+     * <p>The message is deliberately generic — it must not describe whose the resource
+     * is or what it holds.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException e, HttpServletRequest request) {
+
+        return build(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                "You do not have access to this resource", request);
     }
 
     @ExceptionHandler(Exception.class)
