@@ -39,10 +39,21 @@ public abstract class IntegrationTestBase {
         POSTGRES.start();
     }
 
+    /**
+     * A fixed test signing key, long enough to satisfy the HS256 minimum that
+     * {@code JwtService} enforces at startup. Test-only and committed on purpose —
+     * it signs nothing outside this suite, and the real key comes from the
+     * environment with no fallback (rules.md 2.5).
+     */
+    private static final String TEST_JWT_SECRET =
+            "integration-test-signing-key-not-used-anywhere-else";
+
     @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
+    static void applicationProperties(DynamicPropertyRegistry registry) {
         registry.add("DB_URL", POSTGRES::getJdbcUrl);
         registry.add("DB_USERNAME", POSTGRES::getUsername);
         registry.add("DB_PASSWORD", POSTGRES::getPassword);
+        registry.add("JWT_SECRET", () -> TEST_JWT_SECRET);
+        registry.add("JWT_EXPIRATION_MINUTES", () -> 15);
     }
 }
