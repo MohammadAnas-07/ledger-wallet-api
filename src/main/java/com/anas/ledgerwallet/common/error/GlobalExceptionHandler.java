@@ -3,11 +3,12 @@ package com.anas.ledgerwallet.common.error;
 import com.anas.ledgerwallet.account.AccountNotFoundException;
 import com.anas.ledgerwallet.auth.EmailAlreadyRegisteredException;
 import com.anas.ledgerwallet.ledger.InsufficientFundsException;
+import com.anas.ledgerwallet.ledger.SelfTransferException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -97,15 +98,36 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * A transfer named the same account on both sides.
+     *
+     * <p>400 rather than 422: the payload itself is contradictory, and the caller can
+     * fix it by naming a different destination.
+     */
+    @ExceptionHandler(SelfTransferException.class)
+    public ResponseEntity<ErrorResponse> handleSelfTransfer(
+            SelfTransferException e, HttpServletRequest request) {
+
+        return build(HttpStatus.BAD_REQUEST, "SELF_TRANSFER_NOT_ALLOWED",
+                e.getMessage(), request);
+    }
+
+    /**
      * Two writers raced for the same account and this one lost.
      *
-     * <p>Not an error in the code: it is optimistic locking doing its job. The whole
+     * <p>Not an error in the code: it is the locking doing its job. The whole
      * transaction rolled back, nothing partial was written, and the caller may retry —
      * safely, if they sent an idempotency key (architecture.md 3).
+     *
+     * <p>Catches {@link ConcurrencyFailureException} rather than only the optimistic
+     * subclass, so a database-level deadlock or lock timeout
+     * ({@code CannotAcquireLockException}) is also reported as a retryable conflict.
+     * Handling only the optimistic case left the pessimistic one falling through to
+     * the catch-all below and surfacing as a 500 — a contention failure dressed up as
+     * a server fault, which tells the caller to give up when they should retry.
      */
-    @ExceptionHandler(OptimisticLockingFailureException.class)
-    public ResponseEntity<ErrorResponse> handleOptimisticLock(
-            OptimisticLockingFailureException e, HttpServletRequest request) {
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    public ResponseEntity<ErrorResponse> handleConcurrencyFailure(
+            ConcurrencyFailureException e, HttpServletRequest request) {
 
         return build(HttpStatus.CONFLICT, "CONCURRENT_MODIFICATION",
                 "The account was modified concurrently; please retry", request);
