@@ -70,6 +70,18 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Bounded retry around optimistic lock conflicts on transfers.
+             spring-retry is AOP-driven, so the aspect starter is required for its
+             annotations to take effect at all. -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- JWT: api is compile-scope, impl and jackson are runtime-only so that
              application code cannot accidentally depend on internals. -->
         <dependency>
