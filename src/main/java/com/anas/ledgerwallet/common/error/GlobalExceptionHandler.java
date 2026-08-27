@@ -4,6 +4,7 @@ import com.anas.ledgerwallet.account.AccountNotFoundException;
 import com.anas.ledgerwallet.auth.EmailAlreadyRegisteredException;
 import com.anas.ledgerwallet.ledger.InsufficientFundsException;
 import com.anas.ledgerwallet.ledger.SelfTransferException;
+import com.anas.ledgerwallet.ledger.TransactionNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -60,6 +61,13 @@ public class GlobalExceptionHandler {
 
         return build(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
                 "Invalid email or password", request);
+    }
+
+    @ExceptionHandler(TransactionNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTransactionNotFound(
+            TransactionNotFoundException e, HttpServletRequest request) {
+
+        return build(HttpStatus.NOT_FOUND, "TRANSACTION_NOT_FOUND", e.getMessage(), request);
     }
 
     @ExceptionHandler(AccountNotFoundException.class)
