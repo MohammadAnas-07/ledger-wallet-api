@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -37,6 +38,7 @@ class TransferServiceTest {
     @Mock private AccountRepository accountRepository;
     @Mock private AccountService accountService;
     @Mock private TransactionRepository transactionRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private LedgerService ledgerService;
 

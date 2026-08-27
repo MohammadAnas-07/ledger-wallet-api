@@ -5,6 +5,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.kafka.ConfluentKafkaContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * Base class for integration tests: boots the full application against a real
@@ -35,10 +37,6 @@ public abstract class IntegrationTestBase {
                     // rules.md 3.2 says must never be written off as a flaky test.
                     .withStartupTimeout(Duration.ofMinutes(3));
 
-    static {
-        POSTGRES.start();
-    }
-
     /**
      * A fixed test signing key, long enough to satisfy the HS256 minimum that
      * {@code JwtService} enforces at startup. Test-only and committed on purpose —
@@ -48,6 +46,22 @@ public abstract class IntegrationTestBase {
     private static final String TEST_JWT_SECRET =
             "integration-test-signing-key-not-used-anywhere-else";
 
+    /**
+     * A real broker, matching the image compose runs.
+     *
+     * <p>Not an embedded or mocked one: the point of these tests is that a committed
+     * transaction reaches a topic and a consumer reads it back, which is exactly the
+     * part a fake would assume rather than prove.
+     */
+    private static final ConfluentKafkaContainer KAFKA =
+            new ConfluentKafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
+                    .withStartupTimeout(Duration.ofMinutes(3));
+
+    static {
+        POSTGRES.start();
+        KAFKA.start();
+    }
+
     @DynamicPropertySource
     static void applicationProperties(DynamicPropertyRegistry registry) {
         registry.add("DB_URL", POSTGRES::getJdbcUrl);
@@ -55,5 +69,6 @@ public abstract class IntegrationTestBase {
         registry.add("DB_PASSWORD", POSTGRES::getPassword);
         registry.add("JWT_SECRET", () -> TEST_JWT_SECRET);
         registry.add("JWT_EXPIRATION_MINUTES", () -> 15);
+        registry.add("KAFKA_BOOTSTRAP_SERVERS", KAFKA::getBootstrapServers);
     }
 }
