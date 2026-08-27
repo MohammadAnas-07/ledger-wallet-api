@@ -26,6 +26,38 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  kafka:
+    # Not a secret, so a local default is fine here — unlike the datasource and JWT
+    # settings below, where a fallback would be a committed credential.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      # Wait for every in-sync replica before considering a send successful. A weaker
+      # setting can drop an event during a broker failover without telling anyone,
+      # which for an audit stream is the one failure that must not be silent.
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # No type headers on the wire: consumers should not be told which Java class
+        # produced a message, and a foreign consumer cannot use it anyway.
+        spring.json.add.type.headers: false
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Wraps the JSON deserializer so a malformed message becomes a handled failure
+      # routed to the DLT, rather than an exception that stalls the partition forever.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        # Explicit allowlist: never deserialise into whatever class a message names.
+        spring.json.trusted.packages: com.anas.ledgerwallet.ledger.event
+        spring.json.value.default.type: com.anas.ledgerwallet.ledger.event.TransactionEventPayload
+
+app:
+  kafka:
+    transaction-topic: transaction-events
+    audit-group-id: audit-log
+
 security:
   jwt:
     # No default: a fallback signing key is a hardcoded secret, and it is the one that
