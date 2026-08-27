@@ -3,10 +3,12 @@ package com.anas.ledgerwallet.ledger;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, UUID> {
+public interface LedgerEntryRepository
+        extends JpaRepository<LedgerEntry, UUID>, JpaSpecificationExecutor<LedgerEntry> {
 
     /**
      * The system-wide invariant, as one number: every entry ever written, summed.
