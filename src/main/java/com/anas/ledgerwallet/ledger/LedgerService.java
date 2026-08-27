@@ -7,11 +7,13 @@ import com.anas.ledgerwallet.account.AccountService;
 import com.anas.ledgerwallet.ledger.dto.MoneyMovementRequest;
 import com.anas.ledgerwallet.ledger.dto.TransactionResponse;
 import com.anas.ledgerwallet.ledger.dto.TransferResponse;
+import com.anas.ledgerwallet.ledger.event.TransactionCompletedEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,14 +41,17 @@ public class LedgerService {
     private final AccountRepository accountRepository;
     private final AccountService accountService;
     private final TransactionRepository transactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LedgerService(
             AccountRepository accountRepository,
             AccountService accountService,
-            TransactionRepository transactionRepository) {
+            TransactionRepository transactionRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.accountRepository = accountRepository;
         this.accountService = accountService;
         this.transactionRepository = transactionRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /** Money in: the system account is debited, the caller's account credited. */
@@ -163,6 +168,24 @@ public class LedgerService {
         // Flushed inside the transaction so an optimistic lock conflict surfaces here,
         // as a rollback of the whole unit, rather than at some later commit point.
         Transaction saved = transactionRepository.saveAndFlush(transaction);
+
+        // Registered, not sent. The listener runs only if this transaction commits, so
+        // a later rollback — an optimistic lock conflict on flush, say — takes the
+        // event with it and the audit log never learns of a movement that did not
+        // happen (prd.md, Invariant 5).
+        //
+        // Not published on the idempotent replay path above: a retry moves no money,
+        // so it is not a second event.
+        eventPublisher.publishEvent(TransactionCompletedEvent.of(
+                saved.getId(),
+                saved.getType(),
+                saved.getAmount(),
+                debited.getId(),
+                credited.getId(),
+                debited.getBalance(),
+                credited.getBalance(),
+                saved.getStatus(),
+                saved.getCreatedAt()));
 
         return new Posted(saved, debited.getBalance(), credited.getBalance());
     }

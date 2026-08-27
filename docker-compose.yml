@@ -55,7 +55,12 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      # srvr, not ruok. ZooKeeper 3.5+ gates its four-letter-word commands behind a
+      # whitelist and ships with only srvr enabled, so a ruok probe answers "ruok is
+      # not executed because it is not in the whitelist". The container then never
+      # turns healthy and Kafka's depends_on blocks forever — with a perfectly healthy
+      # ZooKeeper sitting behind it.
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q 'Zookeeper version'"]
       interval: 10s
       timeout: 5s
       retries: 10

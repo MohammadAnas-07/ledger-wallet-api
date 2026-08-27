@@ -12,6 +12,7 @@ import com.anas.ledgerwallet.account.AccountRepository;
 import com.anas.ledgerwallet.account.AccountService;
 import com.anas.ledgerwallet.auth.User;
 import com.anas.ledgerwallet.ledger.dto.MoneyMovementRequest;
+import com.anas.ledgerwallet.ledger.event.TransactionCompletedEvent;
 import com.anas.ledgerwallet.ledger.dto.TransactionResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -26,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,6 +38,7 @@ class LedgerServiceTest {
     @Mock private AccountRepository accountRepository;
     @Mock private AccountService accountService;
     @Mock private TransactionRepository transactionRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private LedgerService ledgerService;
 
@@ -212,6 +215,52 @@ class LedgerServiceTest {
         assertThat(response.transactionId()).isEqualTo(existing.getId());
         assertThat(account.getBalance()).isEqualByComparingTo("100.00");
         verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
+    }
+
+    @Test
+    @DisplayName("A committed movement registers exactly one event")
+    void registersOneEvent() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        ledgerService.deposit(account.getId(), CALLER_ID, amount("40.00"));
+
+        verify(eventPublisher).publishEvent(any(TransactionCompletedEvent.class));
+    }
+
+    @Test
+    @DisplayName("A refused withdrawal registers no event")
+    void refusedMovementRegistersNoEvent() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "10.00");
+        wire(account);
+
+        assertThatThrownBy(() ->
+                ledgerService.withdraw(account.getId(), CALLER_ID, amount("50.00")))
+                .isInstanceOf(InsufficientFundsException.class);
+
+        // The listener is AFTER_COMMIT, so a registered event would still not be sent
+        // here — but not registering it at all keeps the rule visible at this level.
+        verify(eventPublisher, never()).publishEvent(any(TransactionCompletedEvent.class));
+    }
+
+    @Test
+    @DisplayName("An idempotent replay registers no second event")
+    void replayRegistersNoEvent() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        Transaction existing = new Transaction(
+                TransactionType.DEPOSIT, new BigDecimal("40.00"), systemAccount(), account,
+                "replay-key", Instant.now());
+        ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
+        when(transactionRepository.findByIdempotencyKey("replay-key"))
+                .thenReturn(Optional.of(existing));
+
+        ledgerService.deposit(account.getId(), CALLER_ID,
+                new MoneyMovementRequest(new BigDecimal("40.00"), "replay-key"));
+
+        // A retry moves no money, so there is nothing new to audit.
+        verify(eventPublisher, never()).publishEvent(any(TransactionCompletedEvent.class));
     }
 
     @Test
