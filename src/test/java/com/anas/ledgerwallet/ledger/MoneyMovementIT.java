@@ -267,6 +267,63 @@ class MoneyMovementIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("Simultaneous deposit and withdrawal on one account do not deadlock")
+    void mixedDepositAndWithdrawalDoNotDeadlock() throws Exception {
+        String token = newUserToken();
+        UUID accountId = newAccount(token);
+        move(token, accountId, "deposit", "100.00", TransactionResponse.class);
+
+        // A deposit posts (system, user) and a withdrawal posts (user, system) — the
+        // same two rows in opposite orders. Before movements were applied in a fixed
+        // id order, this pair could deadlock in PostgreSQL and surface as a 500. The
+        // Phase 4 tests never mixed the two operations, so nothing caught it.
+        int rounds = 6;
+        ExecutorService pool = Executors.newFixedThreadPool(rounds * 2);
+        CountDownLatch startLine = new CountDownLatch(1);
+        AtomicInteger unexpected = new AtomicInteger();
+
+        try {
+            List<Future<?>> attempts = new java.util.ArrayList<>();
+            for (int i = 0; i < rounds; i++) {
+                attempts.add(pool.submit(() -> {
+                    startLine.await();
+                    record(move(token, accountId, "deposit",
+                            new MoneyMovementRequest(new BigDecimal("10.00"), null),
+                            String.class), unexpected);
+                    return null;
+                }));
+                attempts.add(pool.submit(() -> {
+                    startLine.await();
+                    record(move(token, accountId, "withdraw",
+                            new MoneyMovementRequest(new BigDecimal("10.00"), null),
+                            String.class), unexpected);
+                    return null;
+                }));
+            }
+            startLine.countDown();
+            for (Future<?> attempt : attempts) {
+                attempt.get(90, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(unexpected.get())
+                .as("no request may fail with a server error")
+                .isZero();
+        assertThat(balanceOf(accountId)).isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        assertReconciles(accountId);
+        assertLedgerBalances();
+    }
+
+    /** 201 committed, 409 lost the race, 422 outrun. Anything else is a real defect. */
+    private void record(ResponseEntity<String> response, AtomicInteger unexpected) {
+        if (!List.of(201, 409, 422).contains(response.getStatusCode().value())) {
+            unexpected.incrementAndGet();
+        }
+    }
+
+    @Test
     @DisplayName("Concurrent deposits all land, and the ledger still balances")
     void concurrentDepositsAllReconcile() throws Exception {
         String token = newUserToken();

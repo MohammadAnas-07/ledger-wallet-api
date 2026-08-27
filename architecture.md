@@ -245,7 +245,7 @@ No custom concurrency algorithm is written anywhere in this codebase. This is a 
 |---|---|---|
 | Cost on the common path | Zero. No lock is taken; contention is detected only at write time. | A row lock is held for the whole transaction, on every request, even uncontended ones. |
 | Behaviour under contention | Loser fails fast and retries. | Loser blocks, waiting on the lock. |
-| Deadlock risk | **None** — no locks are held. | Real: transfer A→B and B→A can deadlock unless accounts are always locked in a fixed order. |
+| Deadlock risk | **Real, and mitigated the same way.** See the note below — an earlier version of this table claimed "none", which was wrong. | Real: transfer A→B and B→A can deadlock unless accounts are always locked in a fixed order. |
 | Throughput at low contention | High. | Lower — serialized per account. |
 | Throughput at high contention | Degrades (retry storms). | More stable. |
 | Failure mode | Explicit exception you must handle. | Silent waiting, then lock timeout. |
@@ -255,6 +255,29 @@ No custom concurrency algorithm is written anywhere in this codebase. This is a 
 Optimistic locking costs nothing when there is no conflict, and when there *is* one it fails loudly and safely — which is precisely the property the correctness guarantee needs.
 
 **Where pessimistic locking would be the right call instead:** a shared treasury or merchant settlement account taking hundreds of concurrent writes per second. Under that pattern, optimistic retries thrash and `@Lock(LockModeType.PESSIMISTIC_WRITE)` — with a fixed account lock ordering — becomes the better choice. That workload is out of scope here, and the reasoning is recorded so the trade-off is a decision rather than a default.
+
+### Deadlock: optimistic locking does not exempt you
+
+"No explicit locks" is not the same as "no locks". Every `UPDATE` takes a row-level write lock that is held until the transaction commits, whatever concurrency strategy the application thinks it is using. So the classic cycle is entirely reachable here:
+
+```
+   Transfer A→B                          Transfer B→A
+   ─────────────────────────────────────────────────────────────
+   UPDATE accounts SET ... WHERE id=A    UPDATE accounts SET ... WHERE id=B
+   (holds write lock on A)               (holds write lock on B)
+   UPDATE ... WHERE id=B  ── waits ──►   UPDATE ... WHERE id=A  ── waits ──►
+                    └──────────── cycle ────────────┘
+   PostgreSQL's deadlock detector kills one: SQLSTATE 40P01
+   → CannotAcquireLockException → not an optimistic failure
+```
+
+This was found by the Phase 5 test that fires A→B and B→A simultaneously. It surfaced as a **500**, because the retry and the error handler both recognised only `OptimisticLockingFailureException`, and a deadlock is a *pessimistic* failure.
+
+**The fix is ordering, not retrying.** `LedgerService` applies both balance movements in ascending account-id order, flushing each one so the order the rows are actually locked in is the order written in the code rather than whatever Hibernate chooses at flush time. A global order on the locked rows means no cycle can form.
+
+Retry is kept as a second line: `@Retryable` covers `CannotAcquireLockException` as well, and the handler now maps the whole `ConcurrencyFailureException` family to `409`. Ordering should mean neither ever fires — but a future code path that touches rows in a new order degrades into a retry instead of a 500.
+
+**This risk predates transfers.** A deposit posts `(system, user)` and a withdrawal posts `(user, system)` — opposite orders on the same two rows — so a concurrent deposit and withdrawal on one account could already deadlock in Phase 4. The Phase 4 concurrency tests never mixed the two operations, so nothing exposed it. The ordering fix is applied in the shared posting path and therefore covers deposits and withdrawals too.
 
 ### Supporting guarantees
 
@@ -480,6 +503,7 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 | Status | Code | Meaning |
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | Malformed or invalid payload |
+| `400` | `SELF_TRANSFER_NOT_ALLOWED` | A transfer named the same account as source and destination |
 | `401` | `UNAUTHENTICATED` | Missing, invalid, or expired token |
 | `403` | `FORBIDDEN` | Authenticated, but the resource is not the caller's |
 | `404` | `NOT_FOUND` | No such account or transaction |
