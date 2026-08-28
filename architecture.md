@@ -466,8 +466,12 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 
 | Method | Path | Description | Success | Errors |
 |---|---|---|---|---|
-| `POST` | `/api/v1/auth/register` | Create a user | `201` | `400` validation, `409` email taken |
-| `POST` | `/api/v1/auth/login` | Exchange credentials for a JWT | `200` | `400`, `401` bad credentials |
+| `POST` | `/api/v1/auth/register` | Create a user | `201` | `400` validation, `409` email taken, `429` rate limited |
+| `POST` | `/api/v1/auth/login` | Exchange credentials for a JWT | `200` | `400`, `401` bad credentials, `429` rate limited |
+
+Both are rate limited per client address — they are the only paths reachable without a
+token, so they are the only ones an attacker can hammer without first getting in. A
+refusal carries `Retry-After`.
 
 ### Accounts — authenticated
 
@@ -509,6 +513,7 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 | `404` | `NOT_FOUND` | No such account or transaction |
 | `409` | `CONCURRENT_MODIFICATION` | Optimistic lock conflict — safe to retry |
 | `422` | `INSUFFICIENT_FUNDS` | Business rule rejected the operation; **no ledger entry was written** |
+| `429` | `RATE_LIMIT_EXCEEDED` | Too many requests to a public auth endpoint from this address; carries `Retry-After` |
 
 All errors share one body shape:
 

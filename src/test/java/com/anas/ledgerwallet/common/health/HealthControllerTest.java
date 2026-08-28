@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.anas.ledgerwallet.auth.UserRepository;
 import com.anas.ledgerwallet.common.config.SecurityConfig;
+import com.anas.ledgerwallet.common.ratelimit.AuthRateLimitFilter;
 import com.anas.ledgerwallet.common.security.JwtAuthenticationFilter;
 import com.anas.ledgerwallet.common.security.JwtService;
 import org.junit.jupiter.api.DisplayName;
@@ -23,12 +24,16 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>These run without a database or a container, so they stay fast. The full
  * application boot is covered separately by {@code HealthEndpointIT}.
  *
+ * <p>The chain's own filters are imported alongside it: the configuration wires
+ * them in by type, so a missing one is a context failure rather than a silently
+ * shorter chain.
+ *
  * <p>The real filter chain is imported rather than disabled — these tests exist to
  * assert what the chain does, so replacing it with a permissive stand-in would leave
  * them asserting nothing. Its collaborators are mocked instead.
  */
 @WebMvcTest(HealthController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, AuthRateLimitFilter.class})
 class HealthControllerTest {
 
     @Autowired
