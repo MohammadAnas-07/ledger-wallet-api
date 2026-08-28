@@ -28,6 +28,7 @@
         -->
         <testcontainers.version>1.21.4</testcontainers.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <bucket4j.version>8.10.1</bucket4j.version>
     </properties>
 
     <dependencies>
@@ -86,6 +87,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- Rate limiting on the two public auth endpoints. bucket4j-core only:
+             the distributed backends (Hazelcast, Redis, Ignite) are separate artifacts
+             and this application throttles per instance, in memory. -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>${bucket4j.version}</version>
         </dependency>
 
         <!-- JWT: api is compile-scope, impl and jackson are runtime-only so that
