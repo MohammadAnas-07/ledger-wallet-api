@@ -20,21 +20,25 @@
 
   ┌──────────────────────────────────────────────────────────────────────────────┐
   │  SECURITY FILTER CHAIN                                                       │
-  │  JwtAuthenticationFilter → validate signature + expiry → set                 │
-  │  SecurityContext  ·  401 if absent/invalid                                   │
+  │  AuthRateLimitFilter → per-address budget on the two public auth paths       │
+  │  JwtAuthenticationFilter → validate signature + expiry → set SecurityContext │
+  │  Neither filter rejects: an absent or bad token leaves the context empty and  │
+  │  the chain's own rules answer 401 at the entry point.                         │
   └───────────────────────────────────┬──────────────────────────────────────────┘
                                       │
   ┌───────────────────────────────────▼──────────────────────────────────────────┐
   │  API / CONTROLLER LAYER            @RestController                           │
-  │  AuthController · AccountController · TransferController · TxHistoryController│
+  │  AuthController · AccountController · MoneyMovementController                 │
+  │  TransferController · StatementController · HealthController                 │
   │  Responsibilities: HTTP mapping, @Valid on request DTOs, DTO↔domain mapping,  │
   │  status codes. NO business logic, NO entities on the wire.                   │
-  │  @RestControllerAdvice → uniform error body { code, message, timestamp }      │
+  │  @RestControllerAdvice → uniform error body {code, message, timestamp, path} │
   └───────────────────────────────────┬──────────────────────────────────────────┘
                                       │
   ┌───────────────────────────────────▼──────────────────────────────────────────┐
   │  SERVICE LAYER                     @Service   @Transactional                  │
-  │  AuthService · AccountService · TransferService · LedgerService               │
+  │  AuthService · AccountService · LedgerService · TransferService               │
+  │  StatementService                                                            │
   │  Responsibilities: ownership checks, business rules (sufficient funds,        │
   │  positive amount, idempotency), DOUBLE-ENTRY POSTING, transaction boundary,   │
   │  optimistic-lock conflict handling, post-commit event registration.           │
@@ -47,12 +51,13 @@
   │  UserRepository · AccountRepository  │   │  @TransactionalEventListener       │
   │  TransactionRepository               │   │      (phase = AFTER_COMMIT)        │
   │  LedgerEntryRepository               │   │  → KafkaTemplate.send(...)         │
+  │  AuditLogRepository                  │   │                                    │
   └──────────┬───────────────────────────┘   └───────────────┬────────────────────┘
              │ Hibernate / JDBC                              │ Kafka producer API
 ═════════════▼═══════════════════════════════════════════════▼══════════════════════
   ┌──────────────────────────────┐              ┌────────────────────────────────┐
   │      PostgreSQL 16           │              │        Apache Kafka            │
-  │  users · accounts            │              │   topic: transaction-events    │
+  │  users · accounts · audit_log │             │   topic: transaction-events    │
   │  transactions · ledger_entries│             │   (3 partitions, key=accountId)│
   │  ACID · single tx boundary   │              └───────────────┬────────────────┘
   │  accounts.version → OCC      │                              │
@@ -70,16 +75,19 @@ POST /api/v1/transfers
    │
    ├─ 1. JwtAuthenticationFilter  → who is calling?          (401 on failure)
    ├─ 2. Controller @Valid        → is the payload sane?     (400 on failure)
-   ├─ 3. TransferService          → BEGIN TRANSACTION
-   │      ├─ idempotency key already seen? → return prior result, no write
-   │      ├─ load fromAccount + toAccount (versions read)
+   ├─ 3. TransferService          → retry boundary only (@Retryable), no transaction
+   │   └─ LedgerService          → BEGIN TRANSACTION
    │      ├─ caller owns fromAccount?                        (403 on failure)
+   │      │     first, so a refusal never depends on state the caller cannot see
+   │      ├─ idempotency key already used by this caller? → return prior result,
+   │      │     or 409 if the same key now describes a different request
+   │      ├─ load fromAccount + toAccount (versions read)
    │      ├─ fromAccount.balance >= amount?                  (422 on failure)
-   │      ├─ create Transaction header
+   │      ├─ create Transaction header (records who initiated it)
    │      ├─ post DEBIT  LedgerEntry  (fromAccount, -amount)
    │      ├─ post CREDIT LedgerEntry  (toAccount,   +amount)
-   │      ├─ update both balances  → Hibernate bumps @Version
-   │      └─ COMMIT   ── version mismatch here ⇒ rollback ⇒ 409 Conflict
+   │      ├─ update both balances in ascending id order → Hibernate bumps @Version
+   │      └─ flush + COMMIT ── version mismatch ⇒ rollback ⇒ 409 Conflict
    │
    ├─ 4. AFTER_COMMIT             → publish to transaction-events
    └─ 5. 201 Created + TransferResponse
@@ -99,16 +107,20 @@ Four tables. `User` and `Account` are conventional; the double-entry model lives
 | `email` | `String` | **Unique**, indexed. Login identity. |
 | `passwordHash` | `String` | BCrypt. Never returned by any endpoint, never logged. |
 | `fullName` | `String` | |
-| `createdAt` | `Instant` | `@CreationTimestamp` |
+| `createdAt` | `Instant` | Set by `AuthService` at registration. No `@CreationTimestamp`: the value is passed in, so a test can control it. |
 
-One user → many accounts (`@OneToMany(mappedBy = "owner")`, lazy).
+The association is one-directional: `Account` points at its owner, and `User` holds no
+collection of accounts. Nothing needs to walk from a user to every account they hold —
+listing is a scoped repository query — and a mapped collection would invite loading all
+of them to answer a question about one.
 
 ### 2.2 `Account`
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `UUID` (PK) | |
-| `owner` | `User` | `@ManyToOne(fetch = LAZY)`, FK `user_id`, indexed. |
+| `owner` | `User` | `@ManyToOne(fetch = LAZY)`, FK `user_id`, indexed. **Null for the system account only**, which is what keeps it unreachable through the API. |
+| `system` | `boolean` | `is_system`. True for the one seeded system account; a `CHECK` keeps every other row owned. |
 | `accountNumber` | `String` | Unique, human-referenceable. |
 | `balance` | `BigDecimal(19,2)` | **Never** `double`. Materialized from the ledger. |
 | `status` | `enum` | `ACTIVE`, `FROZEN`, `CLOSED` |
@@ -123,12 +135,14 @@ public class Account {
     @Id @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    // Not optional = false: the system account has no owner, and that is the
+    // reason isOwnedBy() can never return true for it.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private User owner;
 
     @Column(nullable = false, precision = 19, scale = 2)
-    private BigDecimal balance = BigDecimal.ZERO;
+    private BigDecimal balance;   // set to ZERO at scale 2 in the constructor
 
     @Version                       // ← Hibernate manages this. No custom locking code.
     private Long version;
@@ -144,11 +158,11 @@ One row per business event — one deposit, one withdrawal, one transfer.
 | `id` | `UUID` (PK) | |
 | `type` | `enum` | `DEPOSIT`, `WITHDRAWAL`, `TRANSFER` |
 | `amount` | `BigDecimal(19,2)` | Always **positive**. Direction lives on the entries. |
-| `fromAccount` | `Account` | `@ManyToOne`, nullable for `DEPOSIT` (money enters from the system account). |
-| `toAccount` | `Account` | `@ManyToOne`, nullable for `WITHDRAWAL`. |
-| `status` | `enum` | `COMPLETED`, `FAILED` |
-| `idempotencyKey` | `String` | **Unique**, indexed. A retried request returns the original result instead of moving money twice. |
-| `description` | `String` | |
+| `fromAccount` | `Account` | `@ManyToOne(optional = false)`. Never null: a deposit's source is the system account, not an absent one. |
+| `toAccount` | `Account` | `@ManyToOne(optional = false)`. Never null: a withdrawal's destination is the system account. |
+| `status` | `enum` | `COMPLETED`, `FAILED`. Only `COMPLETED` is ever written — a failed transaction rolls back and leaves no row. |
+| `initiatedBy` | `UUID` | The user who asked for the movement. Held as a plain id; nothing navigates from here to the user. |
+| `idempotencyKey` | `String` | Unique **per initiator** — the index is `(initiated_by, idempotency_key)`, partial so rows without a key do not collide. A retried request returns the original result instead of moving money twice. |
 | `createdAt` | `Instant` | Indexed — statements query on it. |
 | `entries` | `List<LedgerEntry>` | `@OneToMany(cascade = ALL)` — exactly two, always. |
 
@@ -302,7 +316,7 @@ Retry is kept as a second line: `@Retryable` covers `CannotAcquireLockException`
 
 - **Transaction boundary:** the whole transfer runs in one `@Transactional` method. Both entries and both balance updates commit together (Invariant 4).
 - **Isolation level:** PostgreSQL default `READ COMMITTED`. `@Version` supplies the missing lost-update protection, so a stricter isolation level is unnecessary.
-- **DB-level backstop:** `CHECK (balance >= 0)` on `accounts`. The application must never rely on it — if that constraint ever fires, it is a bug — but it makes the invariant impossible to violate even through a direct SQL write.
+- **DB-level backstop:** `CHECK (is_system OR balance >= 0)` on `accounts` — the system account is the negative of everything users hold, so it is exempt by design. The application must never rely on it — if that constraint ever fires, it is a bug — but it makes the invariant impossible to violate even through a direct SQL write.
 - **Money type:** `BigDecimal` with fixed scale 2 throughout. `double` is never used for money.
 
 ---
@@ -327,12 +341,12 @@ The producer is invoked from the service layer **after the database transaction 
 
 ```java
 // Inside the @Transactional service method — registers, does not send:
-eventPublisher.publishEvent(new TransactionCompletedEvent(transaction));
+eventPublisher.publishEvent(TransactionCompletedEvent.of(saved, ...));
 
 // Separate component — fires only if the transaction actually committed:
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-public void onCommitted(TransactionCompletedEvent event) {
-    kafkaTemplate.send("transaction-events", event.accountId().toString(), toPayload(event));
+public void onTransactionCommitted(TransactionCompletedEvent event) {
+    kafkaTemplate.send(topic, event.partitionKey(), TransactionEventPayload.from(event));
 }
 ```
 
@@ -370,7 +384,10 @@ The residual failure mode is the reverse: a commit succeeds and the broker is un
 ```
 POST /api/v1/auth/login  { email, password }
    │
-   ├─ AuthService loads user by email
+   ├─ AuthService delegates to the AuthenticationManager, which is what
+   │  makes the two failures indistinguishable: DaoAuthenticationProvider
+   │  runs a dummy BCrypt comparison for an unknown email, so response
+   │  timing does not reveal which addresses are registered
    ├─ BCryptPasswordEncoder.matches(raw, storedHash)      ← constant-time compare
    ├─ on failure: 401, generic message
    │              (never "wrong password" vs "no such user" — that leaks
@@ -424,11 +441,13 @@ A request with no valid token gets a bare `401` with **no body** from that entry
 Authentication answers *who is calling*. It does not answer *may they touch this account*. Ownership is checked in the **service layer**, on every account-scoped operation:
 
 ```java
-private Account loadOwnedAccount(UUID accountId, UUID callerId) {
+public Account loadOwnedAccount(UUID accountId, UUID callerId) {
     Account account = accountRepository.findById(accountId)
             .orElseThrow(() -> new AccountNotFoundException(accountId));
-    if (!account.getOwner().getId().equals(callerId)) {
-        throw new AccessDeniedException("Account does not belong to caller");
+    // isOwnedBy, not getOwner().getId(): the system account has no owner, so a
+    // direct dereference would throw there instead of refusing.
+    if (!account.isOwnedBy(callerId)) {
+        throw new AccessDeniedException("Account does not belong to the caller");
     }
     return account;
 }
@@ -444,6 +463,7 @@ It lives in the service, not the controller, so it cannot be bypassed by a secon
 - Errors: uniform JSON shape from `@RestControllerAdvice`; no stack traces or SQL in responses.
 - SQL injection: parameterized queries throughout via Spring Data JPA. No string-concatenated SQL.
 - IDs: UUIDs, so account identifiers cannot be enumerated.
+- Rate limiting: the two public auth paths are throttled per client address, ahead of authentication, so a refused request costs no BCrypt comparison (§7).
 
 ---
 
@@ -471,7 +491,7 @@ It lives in the service, not the controller, so it cannot be bypassed by a secon
 | `app` | built from project `Dockerfile` | `${SERVER_PORT:-8080}` | `depends_on` db + kafka; waits on health checks. Config via environment variables. |
 | `db` | `postgres:16-alpine` | `${DB_HOST_PORT:-5432}` | Named volume `pgdata` for persistence; healthcheck `pg_isready`. |
 | `kafka` | `confluentinc/cp-kafka:7.6.0` | `9092` | `depends_on: zookeeper`; auto-create topics disabled — `transaction-events` is created explicitly with its intended partition count. |
-| `zookeeper` | `confluentinc/cp-zookeeper:7.6.0` | `2181` | Kafka coordination. (Kafka 3.7 also supports KRaft mode, which removes this service; Zookeeper is kept here as the more widely documented setup.) |
+| `zookeeper` | `confluentinc/cp-zookeeper:7.6.0` | `2181` | Kafka coordination. (Kafka also supports KRaft mode, which removes this service; Zookeeper is kept here as the more widely documented setup.) |
 
 ```bash
 docker compose up --build
@@ -571,3 +591,7 @@ Vertical slices, in dependency order. Each is complete — API + logic + persist
 5. Transfer with `@Version` optimistic locking **+ the concurrency test suite** ← the centrepiece
 6. Statement / transaction history **+ pagination and scoping tests**
 7. Kafka producer (post-commit) + audit consumer **+ rollback-emits-no-event test**
+8. Hardening: rate limiting, a security review against the rules.md checklist, a load
+   test under sustained traffic **+ the fixes that review turned up** — idempotency
+   keys scoped to their caller, client errors answered as 4xx, and `PESSIMISTIC_WRITE`
+   on the system account once the numbers showed 87% of deposits colliding on it
