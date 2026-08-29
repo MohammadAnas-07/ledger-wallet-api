@@ -183,6 +183,45 @@ class MoneyMovementIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("Withdrawing from another user's account returns 403")
+    void cannotWithdrawFromAnotherUsersAccount() {
+        String ownerToken = newUserToken();
+        String intruderToken = newUserToken();
+        UUID victimAccount = newAccount(ownerToken);
+        move(ownerToken, victimAccount, "deposit", "200.00", TransactionResponse.class);
+
+        ResponseEntity<ErrorResponse> response =
+                move(intruderToken, victimAccount, "withdraw", "50.00", ErrorResponse.class);
+
+        // 403 rather than 422: an intruder must not learn whether the account could
+        // have afforded it. The service refuses on ownership before reading a balance.
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(balanceOf(victimAccount)).isEqualByComparingTo("200.00");
+        assertReconciles(victimAccount);
+    }
+
+    @Test
+    @DisplayName("Money movement endpoints require authentication")
+    void moneyMovementEndpointsRequireAuthentication() {
+        UUID accountId = newAccount(newUserToken());
+        MoneyMovementRequest request = new MoneyMovementRequest(new BigDecimal("10.00"), null);
+
+        // No Authorization header at all: the filter chain must refuse both before any
+        // handler runs. The deny-by-default rule is asserted generically elsewhere;
+        // these two paths move money, so they are worth naming.
+        assertThat(restTemplate.postForEntity(
+                "/api/v1/accounts/" + accountId + "/deposit", request, String.class)
+                .getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(restTemplate.postForEntity(
+                "/api/v1/accounts/" + accountId + "/withdraw", request, String.class)
+                .getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        assertThat(balanceOf(accountId)).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     @DisplayName("Repeating an idempotency key does not apply the movement twice")
     void idempotencyKeyPreventsDoubleApply() {
         String token = newUserToken();

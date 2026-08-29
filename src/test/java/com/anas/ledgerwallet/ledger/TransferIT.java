@@ -177,6 +177,25 @@ class TransferIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("The transfer endpoint requires authentication")
+    void transferRequiresAuthentication() {
+        String ownerToken = newUserToken();
+        UUID source = fundedAccount(ownerToken, "100.00");
+        UUID destination = newAccount(newUserToken());
+
+        // No token: refused by the chain before the service can check who owns what.
+        assertThat(restTemplate.postForEntity(
+                "/api/v1/transfers",
+                new TransferRequest(source, destination, new BigDecimal("10.00"), null),
+                String.class)
+                .getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        assertThat(balanceOf(source)).isEqualByComparingTo("100.00");
+        assertThat(balanceOf(destination)).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     @DisplayName("An unknown destination returns 404")
     void unknownDestinationRejected() {
         String token = newUserToken();
