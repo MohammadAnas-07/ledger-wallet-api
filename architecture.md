@@ -254,7 +254,26 @@ No custom concurrency algorithm is written anywhere in this codebase. This is a 
 
 Optimistic locking costs nothing when there is no conflict, and when there *is* one it fails loudly and safely — which is precisely the property the correctness guarantee needs.
 
-**Where pessimistic locking would be the right call instead:** a shared treasury or merchant settlement account taking hundreds of concurrent writes per second. Under that pattern, optimistic retries thrash and `@Lock(LockModeType.PESSIMISTIC_WRITE)` — with a fixed account lock ordering — becomes the better choice. That workload is out of scope here, and the reasoning is recorded so the trade-off is a decision rather than a default.
+**Where pessimistic locking is the right call instead:** a shared account that every write touches. This was written as a hypothetical — "out of scope here" — and it was wrong: the system account is exactly that workload, and it had been one since Phase 4.
+
+### The system account, measured
+
+Every deposit and withdrawal posts its counter-entry against the single seeded system account, so two people paying into two unrelated accounts still write the same row. Phase 8 measured it (`TransferLoadIT`), twelve concurrent depositors, each into an account of their own, nobody sharing a user account with anybody:
+
+| | Conflict rate | Accepted |
+|---|---|---|
+| Deposits, optimistic locking on the system account | **87.1%** | 23 of 178 |
+| Deposits, `PESSIMISTIC_WRITE` on the system account | **0.0%** | 157 of 157 |
+| Transfers (never touch the system account), before | 36.7% / 33.5% | — |
+| Transfers, after | 36.7% / 34.2% | — |
+
+Nearly nine deposits in ten were being rolled back over a row none of those callers cared about. Successful deposits went from about 4 per second to about 26. The transfer figures are the control: they do not touch the system account, and the change did not move them.
+
+So `AccountRepository.findByIdForUpdate` takes `@Lock(PESSIMISTIC_WRITE)`, and `LedgerService` uses it **for the system account only**. Every other account keeps optimistic locking, for all the reasons in the table above — contention between real users is rare, and a lock on every account would serialise the whole API to buy nothing.
+
+**Why this cannot deadlock.** A transfer never touches the system account, so the only transactions taking this lock are deposits and withdrawals, and each takes it exactly once. The system account's id (`00000000-…-0001`) also sorts below every generated account id, so it is the first row updated by the ordered-update rule below. Both orderings agree, and no cycle can form.
+
+**What it costs.** Deposits and withdrawals now serialise on that row rather than racing for it, and the wait is unbounded (PostgreSQL's default `lock_timeout`). That is acceptable while the locking transaction is a handful of statements long. If throughput on that row ever becomes the ceiling, the next step is not a longer wait — it is removing the shared row: shard the system account into several, or drop its materialised balance and derive it from its entries.
 
 ### Deadlock: optimistic locking does not exempt you
 
@@ -386,14 +405,17 @@ http
   .csrf(csrf -> csrf.disable())                      // stateless API, no cookies
   .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
   .authorizeHttpRequests(auth -> auth
-      .requestMatchers("/api/v1/auth/**").permitAll()
-      .requestMatchers("/actuator/health").permitAll()
+      // Listed one by one, never as /api/v1/auth/** — a wildcard would
+      // silently make /api/v1/auth/me public too.
+      .requestMatchers("/health", "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
       .anyRequest().authenticated())                 // deny by default
   .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+  .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class)
   .exceptionHandling(e -> e
-      .authenticationEntryPoint(jsonAuthEntryPoint)  // 401 as JSON, not an HTML login page
-      .accessDeniedHandler(jsonAccessDeniedHandler)) // 403 as JSON
+      .authenticationEntryPoint(new HttpStatusEntryPoint(UNAUTHORIZED)))
 ```
+
+A request with no valid token gets a bare `401` with **no body** from that entry point — there is no error code on it, because nothing about the failure is safe to describe. A `403` looks different: it comes from `AccessDeniedException` travelling up to the `@RestControllerAdvice`, so it does carry the standard error body.
 
 `.anyRequest().authenticated()` is the important line: a new endpoint is protected the moment it is written. Exposing one requires an explicit, reviewable decision.
 
@@ -437,18 +459,17 @@ It lives in the service, not the controller, so it cannot be bypassed by a secon
 | Persistence | Spring Data JPA / **Hibernate** | 6.x | `@Version` optimistic locking — the core of the concurrency strategy. |
 | Database | **PostgreSQL** | 16 | Recommended: strict `NUMERIC` semantics for money, mature MVCC, solid `CHECK` constraint support, `READ COMMITTED` default that pairs well with `@Version`. MySQL would work; PostgreSQL is the better fit for a ledger. |
 | Migrations | Flyway | 10.x | Versioned schema. `ddl-auto=validate` in every environment — Hibernate never mutates the schema. |
-| Messaging | **Apache Kafka** | 3.7 | `transaction-events` topic; Spring Kafka `KafkaTemplate` + `@KafkaListener`. |
+| Messaging | **Apache Kafka** | 3.6 (via `cp-kafka` 7.6.0) | `transaction-events` topic; Spring Kafka `KafkaTemplate` + `@KafkaListener`. |
 | Build | Maven | 3.9+ | |
 | Testing | JUnit 5, Mockito, **Testcontainers**, Awaitility | — | Testcontainers runs concurrency tests against real PostgreSQL — an H2 in-memory DB does not reproduce real locking behaviour, so the invariant tests would be meaningless there. |
-| API docs | springdoc-openapi | 2.x | Swagger UI at `/swagger-ui.html`. |
 | Container | Docker + Docker Compose | — | See below. |
 
 ### Docker Compose services
 
 | Service | Image | Port | Notes |
 |---|---|---|---|
-| `app` | built from project `Dockerfile` | `8080` | `depends_on` db + kafka; waits on health checks. Config via environment variables. |
-| `db` | `postgres:16-alpine` | `5432` | Named volume `pgdata` for persistence; healthcheck `pg_isready`. |
+| `app` | built from project `Dockerfile` | `${SERVER_PORT:-8080}` | `depends_on` db + kafka; waits on health checks. Config via environment variables. |
+| `db` | `postgres:16-alpine` | `${DB_HOST_PORT:-5432}` | Named volume `pgdata` for persistence; healthcheck `pg_isready`. |
 | `kafka` | `confluentinc/cp-kafka:7.6.0` | `9092` | `depends_on: zookeeper`; auto-create topics disabled — `transaction-events` is created explicitly with its intended partition count. |
 | `zookeeper` | `confluentinc/cp-zookeeper:7.6.0` | `2181` | Kafka coordination. (Kafka 3.7 also supports KRaft mode, which removes this service; Zookeeper is kept here as the more widely documented setup.) |
 
@@ -460,14 +481,18 @@ docker compose up --build
 
 ## 7. API Contract Summary
 
-Endpoint list only — full request/response schemas live in the OpenAPI spec at `/v3/api-docs` (Swagger UI at `/swagger-ui.html`).
+Endpoint list only. There is no generated OpenAPI document: springdoc was considered and never added, so the request and response shapes are the DTO records in each feature package, and [README.md](README.md) walks through every endpoint with a real call.
 
 ### Auth — public
 
 | Method | Path | Description | Success | Errors |
 |---|---|---|---|---|
-| `POST` | `/api/v1/auth/register` | Create a user | `201` | `400` validation, `409` email taken |
-| `POST` | `/api/v1/auth/login` | Exchange credentials for a JWT | `200` | `400`, `401` bad credentials |
+| `POST` | `/api/v1/auth/register` | Create a user | `201` | `400` validation, `409` email taken, `429` rate limited |
+| `POST` | `/api/v1/auth/login` | Exchange credentials for a JWT | `200` | `400`, `401` bad credentials, `429` rate limited |
+
+Both are rate limited per client address — they are the only paths reachable without a
+token, so they are the only ones an attacker can hammer without first getting in. A
+refusal carries `Retry-After`.
 
 ### Accounts — authenticated
 
@@ -485,6 +510,13 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 | `POST` | `/api/v1/accounts/{id}/withdraw` | Debit the wallet | `201` | `400`, `401`, `403`, `404`, `409`, `422` insufficient funds |
 | `POST` | `/api/v1/transfers` | Transfer between accounts (double-entry, atomic) | `201` | `400`, `401`, `403`, `404`, `409`, `422` |
 
+An idempotency key is scoped to the caller who chose it: the unique index is
+`(initiated_by, idempotency_key)`, and the replay lookup is made against the
+authenticated user. Two callers may pick the same string without meeting. Repeating a
+key with a *different* request — another amount, another pair of accounts — is refused
+with `409 IDEMPOTENCY_KEY_REUSED` rather than replayed, because replaying it would
+report a movement the caller never asked for as though it had just happened.
+
 ### History — authenticated
 
 | Method | Path | Description | Success | Errors |
@@ -496,7 +528,7 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/actuator/health` | Liveness/readiness for Docker health checks |
+| `GET` | `/health` | Liveness for the Docker health check. A plain controller, not Spring Actuator — Actuator was never added |
 
 ### Error semantics
 
@@ -504,11 +536,16 @@ Endpoint list only — full request/response schemas live in the OpenAPI spec at
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | Malformed or invalid payload |
 | `400` | `SELF_TRANSFER_NOT_ALLOWED` | A transfer named the same account as source and destination |
-| `401` | `UNAUTHENTICATED` | Missing, invalid, or expired token |
+| `401` | *(no body)* | Missing, invalid, or expired token — refused by the filter chain before any handler runs |
+| `401` | `INVALID_CREDENTIALS` | A failed login; identical for an unknown email and a wrong password |
 | `403` | `FORBIDDEN` | Authenticated, but the resource is not the caller's |
-| `404` | `NOT_FOUND` | No such account or transaction |
+| `404` | `ACCOUNT_NOT_FOUND` / `TRANSACTION_NOT_FOUND` | No such account or transaction |
+| `404` | `NOT_FOUND` | No handler for that path at all |
+| `405` | `METHOD_NOT_ALLOWED` | The path exists, the method does not |
 | `409` | `CONCURRENT_MODIFICATION` | Optimistic lock conflict — safe to retry |
+| `409` | `IDEMPOTENCY_KEY_REUSED` | The caller's own key was sent again for a different request; send a new key |
 | `422` | `INSUFFICIENT_FUNDS` | Business rule rejected the operation; **no ledger entry was written** |
+| `429` | `RATE_LIMIT_EXCEEDED` | Too many requests to a public auth endpoint from this address; carries `Retry-After` |
 
 All errors share one body shape:
 

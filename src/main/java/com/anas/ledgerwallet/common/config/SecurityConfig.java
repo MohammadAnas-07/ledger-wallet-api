@@ -1,5 +1,6 @@
 package com.anas.ledgerwallet.common.config;
 
+import com.anas.ledgerwallet.common.ratelimit.AuthRateLimitFilter;
 import com.anas.ledgerwallet.common.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -42,9 +43,13 @@ public class SecurityConfig {
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            AuthRateLimitFilter authRateLimitFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.authRateLimitFilter = authRateLimitFilter;
     }
 
     @Bean
@@ -58,6 +63,13 @@ public class SecurityConfig {
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // Ahead of the JWT filter, so a throttled request is rejected before
+                // it costs a database read or a BCrypt comparison. Registering it
+                // against JwtAuthenticationFilter rather than against
+                // UsernamePasswordAuthenticationFilter is what makes the order
+                // explicit: two filters registered before the same reference would
+                // only be ordered by the sequence of these calls.
+                .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class)
                 // Return a bare 401 instead of redirecting to a login page or
                 // prompting for basic auth: this is an API, not a browser app.
                 .exceptionHandling(handling -> handling

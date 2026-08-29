@@ -58,6 +58,20 @@ app:
     transaction-topic: transaction-events
     audit-group-id: audit-log
 
+  # Brute-force and enumeration protection on the only two endpoints reachable
+  # without a token. Per client address, enforced in this instance's memory.
+  rate-limit:
+    login:
+      # Ten attempts, then roughly one every six seconds as the bucket refills.
+      # Comfortable for someone mistyping a password; useless for a password list.
+      capacity: 10
+      refill-period: 1m
+    register:
+      # Lower: nobody legitimately creates accounts in bursts, and every attempt
+      # here answers "is this email already registered".
+      capacity: 5
+      refill-period: 1m
+
 security:
   jwt:
     # No default: a fallback signing key is a hardcoded secret, and it is the one that

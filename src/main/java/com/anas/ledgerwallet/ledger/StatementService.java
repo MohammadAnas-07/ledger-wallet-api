@@ -32,6 +32,17 @@ public class StatementService {
 
     static final int DEFAULT_PAGE_SIZE = 20;
 
+    /**
+     * Upper bound on the page number, clamped the same way the size is.
+     *
+     * <p>A page number is an OFFSET: asking for page 50,000,000 makes PostgreSQL walk
+     * every preceding row before returning anything, so the cost of the request grows
+     * with the number a caller types. At the maximum page size this still reaches ten
+     * million entries, which is far past any real statement; a caller who genuinely
+     * has more history narrows it with the date range instead.
+     */
+    static final int MAX_PAGE = 100_000;
+
     private final LedgerEntryRepository ledgerEntryRepository;
     private final TransactionRepository transactionRepository;
     private final AccountService accountService;
@@ -100,7 +111,7 @@ public class StatementService {
      * problem rather than guarding it.
      */
     private Pageable pageRequest(int page, int size) {
-        int safePage = Math.max(page, 0);
+        int safePage = Math.clamp(page, 0, MAX_PAGE);
         int safeSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
         return PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));

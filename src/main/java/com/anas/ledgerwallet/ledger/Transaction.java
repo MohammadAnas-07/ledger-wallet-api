@@ -54,6 +54,18 @@ public class Transaction {
     @Column(nullable = false, length = 16)
     private TransactionStatus status;
 
+    /**
+     * The user who asked for this movement, and the owner of the idempotency key.
+     *
+     * <p>Held as a plain id rather than an association: nothing here navigates to the
+     * user, and the column exists so a key can be read as (initiator, key). A key is
+     * scoped to the caller who chose it — an unscoped one answers for whoever sends
+     * it, which leaks the original caller's transaction to a stranger and lets a
+     * stranger's key silently swallow a real request.
+     */
+    @Column(name = "initiated_by", nullable = false)
+    private UUID initiatedBy;
+
     @Column(name = "idempotency_key", length = 64)
     private String idempotencyKey;
 
@@ -72,12 +84,14 @@ public class Transaction {
             BigDecimal amount,
             Account fromAccount,
             Account toAccount,
+            UUID initiatedBy,
             String idempotencyKey,
             Instant createdAt) {
         this.type = type;
         this.amount = amount;
         this.fromAccount = fromAccount;
         this.toAccount = toAccount;
+        this.initiatedBy = initiatedBy;
         this.idempotencyKey = idempotencyKey;
         this.status = TransactionStatus.COMPLETED;
         this.createdAt = createdAt;
@@ -109,6 +123,10 @@ public class Transaction {
 
     public TransactionStatus getStatus() {
         return status;
+    }
+
+    public UUID getInitiatedBy() {
+        return initiatedBy;
     }
 
     public String getIdempotencyKey() {

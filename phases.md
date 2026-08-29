@@ -12,14 +12,17 @@ Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** un
 
 | Phase | Feature | Branch | Status |
 |---|---|---|---|
-| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ◐ In review — tests green, compose verification pending |
-| 2 | User registration + JWT login | `feature/jwt-auth` | ☐ Not started |
-| 3 | Account creation + balance view | `feature/accounts` | ☐ Not started |
-| 4 | Deposit / Withdraw + `@Version` optimistic locking | `feature/deposit-withdraw` | ☐ Not started |
-| 5 | Transfer between accounts (double-entry, concurrency) | `feature/transfer-double-entry` | ☐ Not started |
-| 6 | Transaction history / statement | `feature/transaction-history` | ☐ Not started |
-| 7 | Kafka event publishing + consumer | `feature/kafka-events` | ☐ Not started |
-| 8 | Backend hardening (rate limiting, security review, load test) | `feature/hardening` | ☐ Not started |
+| 1 | Project setup + Docker Compose + health check | `feature/project-setup` | ✅ Merged |
+| 2 | User registration + JWT login | `feature/user-auth` | ✅ Merged |
+| 3 | Account creation + balance view | `feature/account-management` | ✅ Merged |
+| 4 | Deposit / Withdraw + `@Version` optimistic locking | `feature/deposit-withdraw` | ✅ Merged |
+| 5 | Transfer between accounts (double-entry, concurrency) | `feature/transfers` | ✅ Merged |
+| 6 | Transaction history / statement | `feature/transaction-history` | ✅ Merged |
+| 7 | Kafka event publishing + consumer | `feature/kafka-events` | ✅ Merged |
+| 8 | Backend hardening (rate limiting, security review, load test) | `feature/hardening` | ◐ In review — suite green, awaiting merge |
+
+Branch names are the ones actually used, which differ from the names planned here for
+phases 2, 3 and 5.
 
 ---
 
@@ -48,6 +51,25 @@ Foundation only. No business logic in this phase.
 > Worth carrying into Phase 4: on this machine the Postgres container took **1m 46s** to report ready. Testcontainers' 60s default would have failed that run, and `IntegrationTestBase` raises the startup timeout to 3 minutes for exactly that reason. The concurrency suites in Phases 4–5 will do far more container work, so this budget needs revisiting there rather than being assumed.
 >
 > Manual verification (rules.md definition of complete, item b) was done by running the app directly via `mvn spring-boot:run` against the `db` container: `GET /health` returned `200 {"status":"UP"}` and a protected path returned `401`. What remains unverified is only the full `docker compose up --build` stack, since the application image itself never finished building here.
+>
+> Dependency note: Lombok is listed above but was never added. Entities are written by
+> hand precisely so that no generated `toString()` can put a password hash into a log
+> line, and DTOs are records, which is what Lombok would have been for.
+>
+> Compose note (Phase 8): **verified.** The image was rebuilt from the committed
+> source and `docker compose up -d --build app` brought all four services up, with
+> `db`, `kafka` and `zookeeper` healthy and the app started in 20s. Through the
+> container: register, login, create account, deposit, an idempotent replay that moved
+> no money a second time, the statement, a malformed id answered `400`, an
+> unauthenticated call answered `401`, and a burst of twenty logins answered ten `401`
+> and ten `429` with `Retry-After`. Flyway showed `V6` applied; the database reported
+> the ledger summing to `0.00`, no account disagreeing with its entries and none below
+> zero; and the deposit's event completed the round trip to the audit log through the
+> real broker.
+>
+> One caveat, so the claim is exact: this was built from the working directory rather
+> than a fresh `git clone`. The Dockerfile copies only `pom.xml` and `src`, so the two
+> are equivalent in practice, but a literal clean-clone run has not been done.
 >
 > Endpoint note: `/health` is a plain controller, not Spring Actuator. Actuator was left out of Phase 1 to keep the dependency set to what the phase actually needs; it is a candidate for Phase 8 if a richer readiness probe (DB connectivity, Kafka reachability) becomes useful.
 
@@ -180,6 +202,45 @@ No new features. Proving what exists is sound.
 - Confirm [architecture.md](architecture.md) matches what was actually built; correct it where it drifted
 
 **Done when:** all six MVP features work end to end, the concurrency suite passes repeatedly, and every [PRD success criterion](prd.md#7-success-criteria) is checked off.
+
+#### What Phase 8 actually did
+
+**Rate limiting** — Bucket4j, per client address, ahead of the JWT filter so a throttled
+request costs no database read and no BCrypt comparison. Login 10/min, register 5/min,
+`429` with `Retry-After`.
+
+**Security review** — the [Find Security Gaps](memory.md#workflow-find-security-gaps)
+workflow was run over the whole codebase. Clean on authentication coverage, ownership,
+passwords, input validation, SQL injection, secrets and JWT expiry. Findings fixed:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | HIGH | Idempotency keys were global, so guessing one replayed a stranger's transaction back to you — and taking one first turned their real request into a no-op | Keys scoped to their initiator (`V6`) |
+| 4 | MEDIUM | A key reused for a *different* request replayed the old result instead of refusing | `409 IDEMPOTENCY_KEY_REUSED` |
+| 5 | MEDIUM | Malformed input, wrong methods and unknown paths returned `500` and logged a stack trace each time | Proper `400` / `404` / `405` |
+| 7 | LOW | Statement page number was unbounded, so a huge OFFSET was cheap to ask for | Clamped, like the page size |
+
+Deliberately **not** fixed, and now recorded as known limitations in
+[README.md](README.md): registration still reveals whether an address is registered
+(`409`), tokens cannot be revoked before they expire, rate limiting is per instance,
+and a committed transaction can go unpublished if the broker is unreachable. `FROZEN`
+and `CLOSED` account statuses are still declared but unenforced — nothing sets them
+today, and the check belongs with the feature that first does.
+
+**Load test** — `TransferLoadIT`: sustained multi-threaded traffic, invariants asserted
+against the database after every round. It also answered the system account question
+this file raised in Phase 4.
+
+**System account** — measured before deciding, as planned. With twelve concurrent
+depositors, each into an account of their own, **87% of deposits were failing** on the
+one shared row; `PESSIMISTIC_WRITE` on that account alone took it to **0%**, and
+transfers — which never touch it — did not move (36.7% before and after). Locked, and
+written up in [architecture.md §3](architecture.md#3-concurrency-strategy--optimistic-locking-via-version).
+
+**Docs** — README rewritten from the "coming soon" placeholder. architecture.md
+corrected where it had drifted: it documented a Swagger UI and an `/actuator/health`
+endpoint that were never built, a `/api/v1/auth/**` wildcard the filter chain
+deliberately does not use, and two error codes the application never emits.
 
 ---
 

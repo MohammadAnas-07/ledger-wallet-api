@@ -137,13 +137,13 @@ public class LedgerService {
         accountService.loadOwnedAccount(ownedAccountId, callerId);
 
         String idempotencyKey = blankToNull(rawIdempotencyKey);
+        BigDecimal amount = requestedAmount.setScale(MONEY_SCALE, RoundingMode.UNNECESSARY);
 
-        Optional<Posted> replay = replayIfAlreadyApplied(idempotencyKey);
+        Optional<Posted> replay = replayIfAlreadyApplied(
+                callerId, idempotencyKey, type, debitAccountId, creditAccountId, amount);
         if (replay.isPresent()) {
             return replay.get();
         }
-
-        BigDecimal amount = requestedAmount.setScale(MONEY_SCALE, RoundingMode.UNNECESSARY);
 
         Account debited = loadForUpdate(debitAccountId);
         Account credited = loadForUpdate(creditAccountId);
@@ -155,8 +155,8 @@ public class LedgerService {
         }
 
         Instant now = Instant.now();
-        Transaction transaction =
-                new Transaction(type, amount, debited, credited, idempotencyKey, now);
+        Transaction transaction = new Transaction(
+                type, amount, debited, credited, callerId, idempotencyKey, now);
 
         applyMovementsInLockOrder(debited, credited, amount);
 
@@ -227,22 +227,65 @@ public class LedgerService {
     }
 
     /**
-     * Returns the original result when this idempotency key has already been applied.
+     * Returns the original result when this caller has already applied this key.
      *
      * <p>This is what makes retrying after a 409 safe — including the server's own
      * bounded retry. Without it, a retry of a request that actually committed would
      * move the money a second time.
+     *
+     * <p>Scoped to the caller. A key looked up on its own belongs to whoever sends it
+     * first, so guessing another user's key would return their transaction and their
+     * balance, and taking a key before them would turn their real request into a
+     * successful-looking no-op.
      */
-    private Optional<Posted> replayIfAlreadyApplied(String idempotencyKey) {
+    private Optional<Posted> replayIfAlreadyApplied(
+            UUID callerId,
+            String idempotencyKey,
+            TransactionType type,
+            UUID debitAccountId,
+            UUID creditAccountId,
+            BigDecimal amount) {
+
         if (idempotencyKey == null) {
             return Optional.empty();
         }
 
-        return transactionRepository.findByIdempotencyKey(idempotencyKey)
-                .map(existing -> new Posted(
-                        existing,
-                        currentBalanceOf(existing.getFromAccount().getId()),
-                        currentBalanceOf(existing.getToAccount().getId())));
+        return transactionRepository
+                .findByInitiatedByAndIdempotencyKey(callerId, idempotencyKey)
+                .map(existing -> {
+                    requireSameRequest(existing, type, debitAccountId, creditAccountId, amount);
+                    return new Posted(
+                            existing,
+                            currentBalanceOf(existing.getFromAccount().getId()),
+                            currentBalanceOf(existing.getToAccount().getId()));
+                });
+    }
+
+    /**
+     * Refuses a key that is being reused for a different request.
+     *
+     * <p>A replay is only a replay if it asks for the same thing. Returning the
+     * original result for a request that differs would report a movement the caller
+     * never asked for as though it had just happened — a client that reused a key by
+     * accident would see 201 and a stale amount, and never learn that its new transfer
+     * did not occur.
+     */
+    private void requireSameRequest(
+            Transaction original,
+            TransactionType type,
+            UUID debitAccountId,
+            UUID creditAccountId,
+            BigDecimal amount) {
+
+        boolean sameRequest = original.getType() == type
+                && original.getFromAccount().getId().equals(debitAccountId)
+                && original.getToAccount().getId().equals(creditAccountId)
+                // compareTo, not equals: 40.0 and 40.00 are the same amount of money.
+                && original.getAmount().compareTo(amount) == 0;
+
+        if (!sameRequest) {
+            throw new IdempotencyKeyReuseException();
+        }
     }
 
     private BigDecimal currentBalanceOf(UUID accountId) {
@@ -255,13 +298,30 @@ public class LedgerService {
      * Loads an account so that its {@code @Version} is read as part of this
      * transaction.
      *
-     * <p>No lock is taken. Hibernate appends the version it read to the UPDATE, and if
-     * another transaction committed in the meantime the update matches zero rows and
-     * this one fails rather than silently overwriting it (architecture.md 3).
+     * <p>For an ordinary account no lock is taken. Hibernate appends the version it
+     * read to the UPDATE, and if another transaction committed in the meantime the
+     * update matches zero rows and this one fails rather than silently overwriting it
+     * (architecture.md 3).
+     *
+     * <p>The system account is the one exception, and it is locked pessimistically.
+     * Every deposit and withdrawal posts against that single row, so two people paying
+     * into two unrelated accounts still race each other on it: under load, 87% of
+     * deposits were losing that race and returning 409 for a conflict neither caller
+     * had anything to do with. Waiting briefly for the row beats rolling the whole
+     * transaction back and asking the caller to try again.
+     *
+     * <p>This cannot deadlock against a transfer, because a transfer never touches the
+     * system account: the only transactions taking this lock are deposits and
+     * withdrawals, each takes it once, and the system account's id sorts below every
+     * generated one — so it is also the first row updated by
+     * {@link #applyMovementsInLockOrder}.
      */
     private Account loadForUpdate(UUID accountId) {
-        return accountRepository.findById(accountId)
-                .orElseThrow(() -> new AccountNotFoundException(accountId));
+        Optional<Account> account = SYSTEM_ACCOUNT_ID.equals(accountId)
+                ? accountRepository.findByIdForUpdate(accountId)
+                : accountRepository.findById(accountId);
+
+        return account.orElseThrow(() -> new AccountNotFoundException(accountId));
     }
 
     private String blankToNull(String value) {
