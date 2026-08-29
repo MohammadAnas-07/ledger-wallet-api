@@ -254,7 +254,26 @@ No custom concurrency algorithm is written anywhere in this codebase. This is a 
 
 Optimistic locking costs nothing when there is no conflict, and when there *is* one it fails loudly and safely — which is precisely the property the correctness guarantee needs.
 
-**Where pessimistic locking would be the right call instead:** a shared treasury or merchant settlement account taking hundreds of concurrent writes per second. Under that pattern, optimistic retries thrash and `@Lock(LockModeType.PESSIMISTIC_WRITE)` — with a fixed account lock ordering — becomes the better choice. That workload is out of scope here, and the reasoning is recorded so the trade-off is a decision rather than a default.
+**Where pessimistic locking is the right call instead:** a shared account that every write touches. This was written as a hypothetical — "out of scope here" — and it was wrong: the system account is exactly that workload, and it had been one since Phase 4.
+
+### The system account, measured
+
+Every deposit and withdrawal posts its counter-entry against the single seeded system account, so two people paying into two unrelated accounts still write the same row. Phase 8 measured it (`TransferLoadIT`), twelve concurrent depositors, each into an account of their own, nobody sharing a user account with anybody:
+
+| | Conflict rate | Accepted |
+|---|---|---|
+| Deposits, optimistic locking on the system account | **87.1%** | 23 of 178 |
+| Deposits, `PESSIMISTIC_WRITE` on the system account | **0.0%** | 157 of 157 |
+| Transfers (never touch the system account), before | 36.7% / 33.5% | — |
+| Transfers, after | 36.7% / 34.2% | — |
+
+Nearly nine deposits in ten were being rolled back over a row none of those callers cared about. Successful deposits went from about 4 per second to about 26. The transfer figures are the control: they do not touch the system account, and the change did not move them.
+
+So `AccountRepository.findByIdForUpdate` takes `@Lock(PESSIMISTIC_WRITE)`, and `LedgerService` uses it **for the system account only**. Every other account keeps optimistic locking, for all the reasons in the table above — contention between real users is rare, and a lock on every account would serialise the whole API to buy nothing.
+
+**Why this cannot deadlock.** A transfer never touches the system account, so the only transactions taking this lock are deposits and withdrawals, and each takes it exactly once. The system account's id (`00000000-…-0001`) also sorts below every generated account id, so it is the first row updated by the ordered-update rule below. Both orderings agree, and no cycle can form.
+
+**What it costs.** Deposits and withdrawals now serialise on that row rather than racing for it, and the wait is unbounded (PostgreSQL's default `lock_timeout`). That is acceptable while the locking transaction is a handful of statements long. If throughput on that row ever becomes the ceiling, the next step is not a longer wait — it is removing the shared row: shard the system account into several, or drop its materialised balance and derive it from its entries.
 
 ### Deadlock: optimistic locking does not exempt you
 

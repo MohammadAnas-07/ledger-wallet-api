@@ -68,7 +68,8 @@ class LedgerServiceTest {
     private void wire(Account userAccount) {
         Account system = systemAccount();
         when(accountRepository.findById(userAccount.getId())).thenReturn(Optional.of(userAccount));
-        when(accountRepository.findById(LedgerService.SYSTEM_ACCOUNT_ID))
+        // The system account is read under a row lock; an ordinary account is not.
+        when(accountRepository.findByIdForUpdate(LedgerService.SYSTEM_ACCOUNT_ID))
                 .thenReturn(Optional.of(system));
         when(accountService.loadOwnedAccount(userAccount.getId(), CALLER_ID))
                 .thenReturn(userAccount);
@@ -372,5 +373,22 @@ class LedgerServiceTest {
         ArgumentCaptor<Transaction> saved = ArgumentCaptor.forClass(Transaction.class);
         verify(transactionRepository).saveAndFlush(saved.capture());
         assertThat(saved.getValue().getInitiatedBy()).isEqualTo(CALLER_ID);
+    }
+
+    @Test
+    @DisplayName("The system account is read under a row lock, ordinary accounts are not")
+    void locksOnlyTheSystemAccount() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        ledgerService.deposit(account.getId(), CALLER_ID, amount("40.00"));
+
+        // Every deposit and withdrawal posts against the one system row, so writers
+        // with nothing in common collide there; waiting for it beats rolling back.
+        verify(accountRepository).findByIdForUpdate(LedgerService.SYSTEM_ACCOUNT_ID);
+        // The caller's own account keeps optimistic locking: conflicts between real
+        // users are rare, and a pessimistic lock there would serialise the whole API.
+        verify(accountRepository).findById(account.getId());
+        verify(accountRepository, never()).findByIdForUpdate(account.getId());
     }
 }
