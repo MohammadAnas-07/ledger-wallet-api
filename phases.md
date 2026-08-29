@@ -8,7 +8,7 @@ Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** un
 
 ---
 
-## Stage 1: Backend — Current Focus
+## Stage 1: Backend — Complete
 
 | Phase | Feature | Branch | Status |
 |---|---|---|---|
@@ -19,10 +19,34 @@ Every phase inherits the [rules.md](rules.md) definition of complete: **(a)** un
 | 5 | Transfer between accounts (double-entry, concurrency) | `feature/transfers` | ✅ Merged |
 | 6 | Transaction history / statement | `feature/transaction-history` | ✅ Merged |
 | 7 | Kafka event publishing + consumer | `feature/kafka-events` | ✅ Merged |
-| 8 | Backend hardening (rate limiting, security review, load test) | `feature/hardening` | ◐ In review — suite green, awaiting merge |
+| 8 | Backend hardening (rate limiting, security review, load test) | `feature/hardening` | ✅ Merged |
 
 Branch names are the ones actually used, which differ from the names planned here for
 phases 2, 3 and 5.
+
+**Stage 1 is complete as of 2026-08-29.** All eight phases are merged to `main` and
+pushed. What that rests on:
+
+- **180 tests green** — 95 unit, 85 integration against real PostgreSQL and a real
+  Kafka broker via Testcontainers. Nothing disabled, nothing deleted to get there. The
+  final run was `mvn clean verify` on a freshly restarted Docker engine.
+- **The concurrency suite passes repeatedly.** `TransferIT` repeats its pool-transfer
+  storm, `TransferLoadIT` runs sustained traffic in rounds, and all three invariants
+  are asserted as post-conditions after every money movement.
+- **`docker compose up` verified from a literal fresh clone** of the pushed `main`,
+  following the README from `cp .env.example .env` onward: all four services healthy,
+  Flyway V1–V6 applied to an empty volume, then register → login → two accounts under
+  two users → deposit → transfer → statement, with exactly one Kafka event per
+  committed transaction and the ledger summing to zero afterwards.
+- **Every [PRD success criterion](prd.md#7-success-criteria) checked off individually**,
+  each against named evidence rather than an assumption.
+
+Two things are worth carrying forward rather than forgetting: the ledger's known
+limitations are written down in [README.md](README.md) — per-instance rate limiting,
+tokens that cannot be revoked before they expire, registration that still reveals
+whether an address is registered, a committed transaction that can go unpublished if
+the broker is unreachable, and the system account that still serialises even now that
+it no longer thrashes.
 
 ---
 
@@ -251,6 +275,10 @@ deliberately does not use, and two error codes the application never emits.
 This applies without exception, including to small or "quick" UI requests: a login screen, a single page, a bit of styling, "just to see how it looks." Anything UI-related that surfaces during Stage 1 gets written down in the parking lot below and left there. Backend correctness is the entire point of this project; a half-built UI competing for attention is exactly what would compromise it.
 
 **Trigger:** Stage 2 begins **only** when every Stage 1 phase (1–8) is complete, merged, and tested — not when the backend "mostly works."
+
+That condition is now met (2026-08-29). Stage 2 is unblocked, not started: nothing in
+this section has been acted on, and `design.md` stays out of context until the work
+actually begins.
 
 **When triggered:**
 - `design.md` (Apple-minimalist reference) is loaded **at that point**, not before. It is deliberately not part of the current context.
