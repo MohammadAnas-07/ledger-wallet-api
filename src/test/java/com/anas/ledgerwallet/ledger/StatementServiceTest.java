@@ -132,6 +132,21 @@ class StatementServiceTest {
     }
 
     @Test
+    @DisplayName("Page number is capped, so a deep offset cannot be asked for")
+    void capsPageNumber() {
+        stubPage(List.of());
+
+        // A page number is an OFFSET: the database walks every preceding row before
+        // returning anything, so an arbitrarily large one is a cheap request to make
+        // and an expensive one to serve.
+        statementService.getStatement(UUID.randomUUID(), CALLER_ID, 50_000_000, 20, null, null);
+
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(ledgerEntryRepository).findAll(any(Specification.class), pageable.capture());
+        assertThat(pageable.getValue().getPageNumber()).isEqualTo(StatementService.MAX_PAGE);
+    }
+
+    @Test
     @DisplayName("A nonsensical page or size is coerced rather than rejected")
     void coercesInvalidPaging() {
         stubPage(List.of());
