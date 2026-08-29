@@ -405,14 +405,17 @@ http
   .csrf(csrf -> csrf.disable())                      // stateless API, no cookies
   .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
   .authorizeHttpRequests(auth -> auth
-      .requestMatchers("/api/v1/auth/**").permitAll()
-      .requestMatchers("/actuator/health").permitAll()
+      // Listed one by one, never as /api/v1/auth/** — a wildcard would
+      // silently make /api/v1/auth/me public too.
+      .requestMatchers("/health", "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
       .anyRequest().authenticated())                 // deny by default
   .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+  .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class)
   .exceptionHandling(e -> e
-      .authenticationEntryPoint(jsonAuthEntryPoint)  // 401 as JSON, not an HTML login page
-      .accessDeniedHandler(jsonAccessDeniedHandler)) // 403 as JSON
+      .authenticationEntryPoint(new HttpStatusEntryPoint(UNAUTHORIZED)))
 ```
+
+A request with no valid token gets a bare `401` with **no body** from that entry point — there is no error code on it, because nothing about the failure is safe to describe. A `403` looks different: it comes from `AccessDeniedException` travelling up to the `@RestControllerAdvice`, so it does carry the standard error body.
 
 `.anyRequest().authenticated()` is the important line: a new endpoint is protected the moment it is written. Exposing one requires an explicit, reviewable decision.
 
@@ -456,18 +459,17 @@ It lives in the service, not the controller, so it cannot be bypassed by a secon
 | Persistence | Spring Data JPA / **Hibernate** | 6.x | `@Version` optimistic locking — the core of the concurrency strategy. |
 | Database | **PostgreSQL** | 16 | Recommended: strict `NUMERIC` semantics for money, mature MVCC, solid `CHECK` constraint support, `READ COMMITTED` default that pairs well with `@Version`. MySQL would work; PostgreSQL is the better fit for a ledger. |
 | Migrations | Flyway | 10.x | Versioned schema. `ddl-auto=validate` in every environment — Hibernate never mutates the schema. |
-| Messaging | **Apache Kafka** | 3.7 | `transaction-events` topic; Spring Kafka `KafkaTemplate` + `@KafkaListener`. |
+| Messaging | **Apache Kafka** | 3.6 (via `cp-kafka` 7.6.0) | `transaction-events` topic; Spring Kafka `KafkaTemplate` + `@KafkaListener`. |
 | Build | Maven | 3.9+ | |
 | Testing | JUnit 5, Mockito, **Testcontainers**, Awaitility | — | Testcontainers runs concurrency tests against real PostgreSQL — an H2 in-memory DB does not reproduce real locking behaviour, so the invariant tests would be meaningless there. |
-| API docs | springdoc-openapi | 2.x | Swagger UI at `/swagger-ui.html`. |
 | Container | Docker + Docker Compose | — | See below. |
 
 ### Docker Compose services
 
 | Service | Image | Port | Notes |
 |---|---|---|---|
-| `app` | built from project `Dockerfile` | `8080` | `depends_on` db + kafka; waits on health checks. Config via environment variables. |
-| `db` | `postgres:16-alpine` | `5432` | Named volume `pgdata` for persistence; healthcheck `pg_isready`. |
+| `app` | built from project `Dockerfile` | `${SERVER_PORT:-8080}` | `depends_on` db + kafka; waits on health checks. Config via environment variables. |
+| `db` | `postgres:16-alpine` | `${DB_HOST_PORT:-5432}` | Named volume `pgdata` for persistence; healthcheck `pg_isready`. |
 | `kafka` | `confluentinc/cp-kafka:7.6.0` | `9092` | `depends_on: zookeeper`; auto-create topics disabled — `transaction-events` is created explicitly with its intended partition count. |
 | `zookeeper` | `confluentinc/cp-zookeeper:7.6.0` | `2181` | Kafka coordination. (Kafka 3.7 also supports KRaft mode, which removes this service; Zookeeper is kept here as the more widely documented setup.) |
 
@@ -479,7 +481,7 @@ docker compose up --build
 
 ## 7. API Contract Summary
 
-Endpoint list only — full request/response schemas live in the OpenAPI spec at `/v3/api-docs` (Swagger UI at `/swagger-ui.html`).
+Endpoint list only. There is no generated OpenAPI document: springdoc was considered and never added, so the request and response shapes are the DTO records in each feature package, and [README.md](README.md) walks through every endpoint with a real call.
 
 ### Auth — public
 
@@ -526,7 +528,7 @@ report a movement the caller never asked for as though it had just happened.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/actuator/health` | Liveness/readiness for Docker health checks |
+| `GET` | `/health` | Liveness for the Docker health check. A plain controller, not Spring Actuator — Actuator was never added |
 
 ### Error semantics
 
@@ -534,9 +536,11 @@ report a movement the caller never asked for as though it had just happened.
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | Malformed or invalid payload |
 | `400` | `SELF_TRANSFER_NOT_ALLOWED` | A transfer named the same account as source and destination |
-| `401` | `UNAUTHENTICATED` | Missing, invalid, or expired token |
+| `401` | *(no body)* | Missing, invalid, or expired token — refused by the filter chain before any handler runs |
+| `401` | `INVALID_CREDENTIALS` | A failed login; identical for an unknown email and a wrong password |
 | `403` | `FORBIDDEN` | Authenticated, but the resource is not the caller's |
-| `404` | `NOT_FOUND` | No such account or transaction |
+| `404` | `ACCOUNT_NOT_FOUND` / `TRANSACTION_NOT_FOUND` | No such account or transaction |
+| `404` | `NOT_FOUND` | No handler for that path at all |
 | `405` | `METHOD_NOT_ALLOWED` | The path exists, the method does not |
 | `409` | `CONCURRENT_MODIFICATION` | Optimistic lock conflict — safe to retry |
 | `409` | `IDEMPOTENCY_KEY_REUSED` | The caller's own key was sent again for a different request; send a new key |
