@@ -56,9 +56,20 @@ Foundation only. No business logic in this phase.
 > hand precisely so that no generated `toString()` can put a password hash into a log
 > line, and DTOs are records, which is what Lombok would have been for.
 >
-> Compose note (Phase 8): the stack was finally run end to end on the development
-> machine — the image built, and the app container served authenticated API requests
-> with `db`, `kafka` and `zookeeper` all healthy alongside it.
+> Compose note (Phase 8): **verified.** The image was rebuilt from the committed
+> source and `docker compose up -d --build app` brought all four services up, with
+> `db`, `kafka` and `zookeeper` healthy and the app started in 20s. Through the
+> container: register, login, create account, deposit, an idempotent replay that moved
+> no money a second time, the statement, a malformed id answered `400`, an
+> unauthenticated call answered `401`, and a burst of twenty logins answered ten `401`
+> and ten `429` with `Retry-After`. Flyway showed `V6` applied; the database reported
+> the ledger summing to `0.00`, no account disagreeing with its entries and none below
+> zero; and the deposit's event completed the round trip to the audit log through the
+> real broker.
+>
+> One caveat, so the claim is exact: this was built from the working directory rather
+> than a fresh `git clone`. The Dockerfile copies only `pom.xml` and `src`, so the two
+> are equivalent in practice, but a literal clean-clone run has not been done.
 >
 > Endpoint note: `/health` is a plain controller, not Spring Actuator. Actuator was left out of Phase 1 to keep the dependency set to what the phase actually needs; it is a candidate for Phase 8 if a richer readiness probe (DB connectivity, Kafka reachability) becomes useful.
 
