@@ -154,7 +154,33 @@ curl "http://localhost:8080/api/v1/accounts/$ACCOUNT/transactions?page=0&size=20
 
 Newest first, paginated, optionally filtered with `from` and `to` (ISO-8601 instants). Asking for someone else's statement returns `403`.
 
-### 7. Watch the events
+### 7. See the rate limiter refuse you
+
+`login` allows 10 attempts per minute per client address, and the bucket refills
+**continuously** — one token roughly every six seconds — rather than resetting on a
+minute boundary. So a slow sequential loop never sees a `429`: at more than about 1.1
+seconds per request, the bucket hands tokens back as fast as you spend them. Send a
+burst instead:
+
+```bash
+for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code}
+" -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" -d '{"email":"nobody@example.com","password":"wrong-password-here"}' & done | sort | uniq -c; wait
+```
+
+About ten `401`s and the rest `429`. Sequentially it takes more than twelve requests to
+see one, because of that refill — 20 is a safe number:
+
+```bash
+for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code} " -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" -d '{"email":"nobody@example.com","password":"wrong-password-here"}'; done; echo
+```
+
+A refusal carries `Retry-After` and the standard error body:
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" -d '{"email":"nobody@example.com","password":"wrong-password-here"}' | head -12
+```
+
+### 8. Watch the events
 
 Every committed transaction publishes one event to the `transaction-events` topic after the commit, and an audit consumer records it. A rolled-back transaction publishes nothing.
 
@@ -208,7 +234,7 @@ Errors all share one shape:
 
 ## Notes on the Design
 
-- **Rate limiting.** `register` and `login` are throttled per client address (5/min and 10/min), because they are the only paths reachable without a token. The limiter runs ahead of authentication, so a throttled request costs no database read and no BCrypt comparison.
+- **Rate limiting.** `register` and `login` are throttled per client address (5/min and 10/min), because they are the only paths reachable without a token. The limiter runs ahead of authentication, so a throttled request costs no database read and no BCrypt comparison. The limit is a **sustained rate**, not a hard cap per calendar minute: tokens refill continuously, so a burst is refused while a slow trickle is not. That is the intended shape — brute force is a burst.
 - **Idempotency keys are yours.** A key is scoped to the caller who chose it — the unique index is `(initiated_by, idempotency_key)`. Two people may pick the same string without ever meeting.
 - **Concurrency.** Accounts carry a `@Version` and conflicts fail loudly rather than losing an update. Transfers retry a bounded number of times, which is only safe because of the idempotency key. Balance updates are applied in a fixed account order so two transfers in opposite directions cannot deadlock.
 - **The system account is the exception.** Every deposit and withdrawal posts its counter-entry against one seeded row, so it is a genuine hotspot: under twelve concurrent depositors — each into a different account — 87% of deposits were failing on it. It is now locked with `PESSIMISTIC_WRITE`, which took that to 0%. Everything else stays optimistic. The measurements are in [architecture.md §3](architecture.md#3-concurrency-strategy--optimistic-locking-via-version) and the load test that produced them is `TransferLoadIT`.

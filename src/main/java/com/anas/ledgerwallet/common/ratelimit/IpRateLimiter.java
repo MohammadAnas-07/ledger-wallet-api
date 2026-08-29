@@ -3,11 +3,11 @@ package com.anas.ledgerwallet.common.ratelimit;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
+import io.github.bucket4j.TimeMeter;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongSupplier;
 
 /**
  * One token bucket per client, holding a single rate limit.
@@ -35,18 +35,23 @@ final class IpRateLimiter {
 
     private final Bandwidth limit;
     private final long idleNanos;
-    private final LongSupplier clock;
+    private final TimeMeter clock;
     private final int sweepThreshold;
 
     private final ConcurrentHashMap<String, Entry> buckets = new ConcurrentHashMap<>();
     private final AtomicBoolean sweeping = new AtomicBoolean();
 
     IpRateLimiter(int capacity, Duration refillPeriod) {
-        this(capacity, refillPeriod, System::nanoTime, DEFAULT_SWEEP_THRESHOLD);
+        this(capacity, refillPeriod, TimeMeter.SYSTEM_NANOTIME, DEFAULT_SWEEP_THRESHOLD);
     }
 
-    /** Test seam: a controllable clock and a threshold small enough to reach. */
-    IpRateLimiter(int capacity, Duration refillPeriod, LongSupplier clock, int sweepThreshold) {
+    /**
+     * Test seam: a controllable clock and a threshold small enough to reach.
+     *
+     * <p>The same clock drives both the buckets and the eviction sweep, so a test can
+     * step time forward and observe refilling without waiting for it.
+     */
+    IpRateLimiter(int capacity, Duration refillPeriod, TimeMeter clock, int sweepThreshold) {
         if (capacity < 1) {
             throw new IllegalArgumentException("Rate limit capacity must be at least 1");
         }
@@ -69,10 +74,14 @@ final class IpRateLimiter {
      * is what the {@code Retry-After} header needs.
      */
     ConsumptionProbe tryConsume(String clientId) {
-        long now = clock.getAsLong();
+        long now = clock.currentTimeNanos();
 
         Entry entry = buckets.computeIfAbsent(
-                clientId, key -> new Entry(Bucket.builder().addLimit(limit).build(),
+                clientId, key -> new Entry(
+                        Bucket.builder()
+                                .addLimit(limit)
+                                .withCustomTimePrecision(clock)
+                                .build(),
                         new AtomicLong(now)));
         entry.lastSeenNanos().set(now);
 
