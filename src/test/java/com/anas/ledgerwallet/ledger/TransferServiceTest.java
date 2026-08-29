@@ -231,9 +231,9 @@ class TransferServiceTest {
 
         Transaction existing = new Transaction(
                 TransactionType.TRANSFER, new BigDecimal("30.00"), source, destination,
-                "transfer-key-1", Instant.now());
+                SENDER_ID, "transfer-key-1", Instant.now());
         ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
-        when(transactionRepository.findByIdempotencyKey("transfer-key-1"))
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(SENDER_ID, "transfer-key-1"))
                 .thenReturn(Optional.of(existing));
 
         TransferResponse response = ledgerService.transfer(

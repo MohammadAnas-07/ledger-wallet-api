@@ -489,6 +489,13 @@ refusal carries `Retry-After`.
 | `POST` | `/api/v1/accounts/{id}/withdraw` | Debit the wallet | `201` | `400`, `401`, `403`, `404`, `409`, `422` insufficient funds |
 | `POST` | `/api/v1/transfers` | Transfer between accounts (double-entry, atomic) | `201` | `400`, `401`, `403`, `404`, `409`, `422` |
 
+An idempotency key is scoped to the caller who chose it: the unique index is
+`(initiated_by, idempotency_key)`, and the replay lookup is made against the
+authenticated user. Two callers may pick the same string without meeting. Repeating a
+key with a *different* request — another amount, another pair of accounts — is refused
+with `409 IDEMPOTENCY_KEY_REUSED` rather than replayed, because replaying it would
+report a movement the caller never asked for as though it had just happened.
+
 ### History — authenticated
 
 | Method | Path | Description | Success | Errors |
@@ -512,6 +519,7 @@ refusal carries `Retry-After`.
 | `403` | `FORBIDDEN` | Authenticated, but the resource is not the caller's |
 | `404` | `NOT_FOUND` | No such account or transaction |
 | `409` | `CONCURRENT_MODIFICATION` | Optimistic lock conflict — safe to retry |
+| `409` | `IDEMPOTENCY_KEY_REUSED` | The caller's own key was sent again for a different request; send a new key |
 | `422` | `INSUFFICIENT_FUNDS` | Business rule rejected the operation; **no ledger entry was written** |
 | `429` | `RATE_LIMIT_EXCEEDED` | Too many requests to a public auth endpoint from this address; carries `Retry-After` |
 

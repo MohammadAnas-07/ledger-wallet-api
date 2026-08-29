@@ -200,10 +200,11 @@ class LedgerServiceTest {
                 new BigDecimal("40.00"),
                 systemAccount(),
                 account,
+                CALLER_ID,
                 "retry-key-1",
                 Instant.now());
         ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
-        when(transactionRepository.findByIdempotencyKey("retry-key-1"))
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(CALLER_ID, "retry-key-1"))
                 .thenReturn(Optional.of(existing));
 
         TransactionResponse response = ledgerService.deposit(
@@ -251,9 +252,9 @@ class LedgerServiceTest {
 
         Transaction existing = new Transaction(
                 TransactionType.DEPOSIT, new BigDecimal("40.00"), systemAccount(), account,
-                "replay-key", Instant.now());
+                CALLER_ID, "replay-key", Instant.now());
         ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
-        when(transactionRepository.findByIdempotencyKey("replay-key"))
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(CALLER_ID, "replay-key"))
                 .thenReturn(Optional.of(existing));
 
         ledgerService.deposit(account.getId(), CALLER_ID,
@@ -278,5 +279,98 @@ class LedgerServiceTest {
         // Money entering the system leaves the system account, so it runs negative.
         assertThat(saved.getValue().getFromAccount().getBalance())
                 .isEqualByComparingTo("-40.00");
+    }
+
+    @Test
+    @DisplayName("A key is looked up against the caller, never on its own")
+    void replayLookupIsScopedToCaller() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        ledgerService.deposit(account.getId(), CALLER_ID,
+                new MoneyMovementRequest(new BigDecimal("40.00"), "shared-key"));
+
+        // An unscoped lookup would find another user's transaction and replay it back
+        // to this caller, along with that user's balance.
+        verify(transactionRepository)
+                .findByInitiatedByAndIdempotencyKey(CALLER_ID, "shared-key");
+    }
+
+    @Test
+    @DisplayName("Reusing a key for a different amount is refused, not replayed")
+    void refusesKeyReusedForADifferentRequest() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        Transaction existing = new Transaction(
+                TransactionType.DEPOSIT, new BigDecimal("40.00"), systemAccount(), account,
+                CALLER_ID, "reused-key", Instant.now());
+        ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(CALLER_ID, "reused-key"))
+                .thenReturn(Optional.of(existing));
+
+        // Replaying here would report the earlier 40.00 as though this 90.00 request
+        // had just succeeded, and the caller would never learn it did not happen.
+        assertThatThrownBy(() -> ledgerService.deposit(account.getId(), CALLER_ID,
+                new MoneyMovementRequest(new BigDecimal("90.00"), "reused-key")))
+                .isInstanceOf(IdempotencyKeyReuseException.class);
+
+        assertThat(account.getBalance()).isEqualByComparingTo("100.00");
+        verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
+    }
+
+    @Test
+    @DisplayName("Reusing a key for a different operation is refused too")
+    void refusesKeyReusedForADifferentOperation() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        Transaction existing = new Transaction(
+                TransactionType.DEPOSIT, new BigDecimal("40.00"), systemAccount(), account,
+                CALLER_ID, "swapped-key", Instant.now());
+        ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(CALLER_ID, "swapped-key"))
+                .thenReturn(Optional.of(existing));
+
+        // Same amount, opposite direction: the two sides are swapped, so this is a
+        // different request wearing the same key.
+        assertThatThrownBy(() -> ledgerService.withdraw(account.getId(), CALLER_ID,
+                new MoneyMovementRequest(new BigDecimal("40.00"), "swapped-key")))
+                .isInstanceOf(IdempotencyKeyReuseException.class);
+    }
+
+    @Test
+    @DisplayName("A replay of the identical request still returns the original result")
+    void replaysWhenTheRequestMatches() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        Transaction existing = new Transaction(
+                TransactionType.DEPOSIT, new BigDecimal("40.00"), systemAccount(), account,
+                CALLER_ID, "match-key", Instant.now());
+        ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
+        when(transactionRepository.findByInitiatedByAndIdempotencyKey(CALLER_ID, "match-key"))
+                .thenReturn(Optional.of(existing));
+
+        // Scale differs, the amount does not: 40.0 and 40.00 are the same money, so
+        // this is the same request and must still replay.
+        TransactionResponse response = ledgerService.deposit(account.getId(), CALLER_ID,
+                new MoneyMovementRequest(new BigDecimal("40.0"), "match-key"));
+
+        assertThat(response.transactionId()).isEqualTo(existing.getId());
+        verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
+    }
+
+    @Test
+    @DisplayName("The caller is recorded as the initiator of the transaction")
+    void recordsTheInitiator() {
+        Account account = account(UUID.randomUUID(), CALLER_ID, "100.00");
+        wire(account);
+
+        ledgerService.deposit(account.getId(), CALLER_ID, amount("40.00"));
+
+        ArgumentCaptor<Transaction> saved = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getInitiatedBy()).isEqualTo(CALLER_ID);
     }
 }

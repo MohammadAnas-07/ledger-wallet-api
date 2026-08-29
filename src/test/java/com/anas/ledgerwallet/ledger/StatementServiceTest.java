@@ -71,7 +71,7 @@ class StatementServiceTest {
             TransactionType type, Account from, Account to, String amount) {
 
         Transaction transaction = new Transaction(
-                type, new BigDecimal(amount), from, to, null, Instant.now());
+                type, new BigDecimal(amount), from, to, UUID.randomUUID(), null, Instant.now());
         ReflectionTestUtils.setField(transaction, "id", UUID.randomUUID());
         return transaction;
     }

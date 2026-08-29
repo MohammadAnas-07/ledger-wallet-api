@@ -8,7 +8,15 @@ import org.springframework.data.repository.query.Param;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
 
-    Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
+    /**
+     * Finds a caller's own earlier use of an idempotency key.
+     *
+     * <p>Scoped to the initiator on purpose. Looking the key up on its own would let
+     * any caller replay a transaction belonging to someone else simply by guessing the
+     * string they used.
+     */
+    Optional<Transaction> findByInitiatedByAndIdempotencyKey(
+            UUID initiatedBy, String idempotencyKey);
 
     /**
      * Loads a transaction together with both of its entries.

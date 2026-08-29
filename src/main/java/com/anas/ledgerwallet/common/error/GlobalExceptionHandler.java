@@ -2,6 +2,7 @@ package com.anas.ledgerwallet.common.error;
 
 import com.anas.ledgerwallet.account.AccountNotFoundException;
 import com.anas.ledgerwallet.auth.EmailAlreadyRegisteredException;
+import com.anas.ledgerwallet.ledger.IdempotencyKeyReuseException;
 import com.anas.ledgerwallet.ledger.InsufficientFundsException;
 import com.anas.ledgerwallet.ledger.SelfTransferException;
 import com.anas.ledgerwallet.ledger.TransactionNotFoundException;
@@ -80,7 +81,7 @@ public class GlobalExceptionHandler {
     /**
      * The caller is authenticated but the resource is not theirs.
      *
-     * <p>The message is deliberately generic — it must not describe whose the resource
+     * <p>The message is deliberately generic â€” it must not describe whose the resource
      * is or what it holds.
      */
     @ExceptionHandler(AccessDeniedException.class)
@@ -123,16 +124,30 @@ public class GlobalExceptionHandler {
      * Two writers raced for the same account and this one lost.
      *
      * <p>Not an error in the code: it is the locking doing its job. The whole
-     * transaction rolled back, nothing partial was written, and the caller may retry —
+     * transaction rolled back, nothing partial was written, and the caller may retry â€”
      * safely, if they sent an idempotency key (architecture.md 3).
      *
      * <p>Catches {@link ConcurrencyFailureException} rather than only the optimistic
      * subclass, so a database-level deadlock or lock timeout
      * ({@code CannotAcquireLockException}) is also reported as a retryable conflict.
      * Handling only the optimistic case left the pessimistic one falling through to
-     * the catch-all below and surfacing as a 500 — a contention failure dressed up as
+     * the catch-all below and surfacing as a 500 â€” a contention failure dressed up as
      * a server fault, which tells the caller to give up when they should retry.
      */
+    /**
+     * The caller reused one of their own idempotency keys for a different request.
+     *
+     * <p>409 like the lock conflict below, but not retryable in the same way: retrying
+     * the same request will keep failing. The caller has to send a new key, or repeat
+     * the original request unchanged to get its result back.
+     */
+    @ExceptionHandler(IdempotencyKeyReuseException.class)
+    public ResponseEntity<ErrorResponse> handleIdempotencyKeyReuse(
+            IdempotencyKeyReuseException e, HttpServletRequest request) {
+
+        return build(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", e.getMessage(), request);
+    }
+
     @ExceptionHandler(ConcurrencyFailureException.class)
     public ResponseEntity<ErrorResponse> handleConcurrencyFailure(
             ConcurrencyFailureException e, HttpServletRequest request) {
