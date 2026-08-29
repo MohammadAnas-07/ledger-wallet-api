@@ -17,9 +17,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Translates exceptions into the standard error body.
@@ -41,6 +45,65 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining("; "));
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message, request);
+    }
+
+    /**
+     * A path variable or query parameter that could not be converted — an id that is
+     * not a UUID, a page that is not a number.
+     *
+     * <p>Without this the request falls through to the catch-all and is reported as
+     * 500: a caller's typo dressed up as a server fault, with a stack trace logged at
+     * ERROR for every one of them. The reply names the parameter and the type it
+     * needed, and never echoes the value back.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+
+        String required = e.getRequiredType() == null
+                ? "a different type"
+                : e.getRequiredType().getSimpleName();
+
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                e.getName() + ": expected a valid " + required, request);
+    }
+
+    /**
+     * A body that could not be parsed at all — malformed JSON, a missing body, a
+     * string where a number belongs.
+     *
+     * <p>The parser's own message is deliberately not passed on: it names Jackson
+     * types and the offending field path, which is internal detail (rules.md 4.5).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException e, HttpServletRequest request) {
+
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                "Request body is missing or malformed", request);
+    }
+
+    /** The path exists, the method does not. 405 rather than the catch-all's 500. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException e, HttpServletRequest request) {
+
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
+                "That method is not supported on this path", request);
+    }
+
+    /**
+     * No handler for the path at all.
+     *
+     * <p>Reachable only once authenticated — an anonymous caller is refused by the
+     * filter chain first — but an authenticated caller mistyping a path deserves a 404
+     * rather than a 500.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(
+            NoResourceFoundException e, HttpServletRequest request) {
+
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", "No such endpoint", request);
     }
 
     @ExceptionHandler(EmailAlreadyRegisteredException.class)
@@ -81,7 +144,7 @@ public class GlobalExceptionHandler {
     /**
      * The caller is authenticated but the resource is not theirs.
      *
-     * <p>The message is deliberately generic â€” it must not describe whose the resource
+     * <p>The message is deliberately generic — it must not describe whose the resource
      * is or what it holds.
      */
     @ExceptionHandler(AccessDeniedException.class)
@@ -124,20 +187,20 @@ public class GlobalExceptionHandler {
      * Two writers raced for the same account and this one lost.
      *
      * <p>Not an error in the code: it is the locking doing its job. The whole
-     * transaction rolled back, nothing partial was written, and the caller may retry â€”
+     * transaction rolled back, nothing partial was written, and the caller may retry —
      * safely, if they sent an idempotency key (architecture.md 3).
      *
      * <p>Catches {@link ConcurrencyFailureException} rather than only the optimistic
      * subclass, so a database-level deadlock or lock timeout
      * ({@code CannotAcquireLockException}) is also reported as a retryable conflict.
      * Handling only the optimistic case left the pessimistic one falling through to
-     * the catch-all below and surfacing as a 500 â€” a contention failure dressed up as
+     * the catch-all below and surfacing as a 500 — a contention failure dressed up as
      * a server fault, which tells the caller to give up when they should retry.
      */
     /**
      * The caller reused one of their own idempotency keys for a different request.
      *
-     * <p>409 like the lock conflict below, but not retryable in the same way: retrying
+     * <p>409 like the lock conflict above, but not retryable in the same way: retrying
      * the same request will keep failing. The caller has to send a new key, or repeat
      * the original request unchanged to get its result back.
      */

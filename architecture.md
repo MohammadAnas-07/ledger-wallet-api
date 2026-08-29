@@ -518,6 +518,7 @@ report a movement the caller never asked for as though it had just happened.
 | `401` | `UNAUTHENTICATED` | Missing, invalid, or expired token |
 | `403` | `FORBIDDEN` | Authenticated, but the resource is not the caller's |
 | `404` | `NOT_FOUND` | No such account or transaction |
+| `405` | `METHOD_NOT_ALLOWED` | The path exists, the method does not |
 | `409` | `CONCURRENT_MODIFICATION` | Optimistic lock conflict — safe to retry |
 | `409` | `IDEMPOTENCY_KEY_REUSED` | The caller's own key was sent again for a different request; send a new key |
 | `422` | `INSUFFICIENT_FUNDS` | Business rule rejected the operation; **no ledger entry was written** |
