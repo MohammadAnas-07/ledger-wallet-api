@@ -11,3 +11,9 @@
 *.jar    binary
 *.png    binary
 *.jpg    binary
+
+# Windows batch files keep CRLF — a .cmd checked out with LF endings is a
+# script cmd.exe can mis-parse. The wrapper's shell twin stays LF, which is
+# what the Linux CI runner needs to execute it at all.
+*.cmd    text eol=crlf
+*.bat    text eol=crlf

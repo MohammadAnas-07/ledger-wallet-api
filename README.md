@@ -1,5 +1,7 @@
 # Ledger Wallet API
 
+[![CI](https://github.com/MohammadAnas-07/ledger-wallet-api/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadAnas-07/ledger-wallet-api/actions/workflows/ci.yml)
+
 A wallet/ledger service built with double-entry bookkeeping and optimistic locking for safe concurrent transfers.
 
 Every movement of money — deposit, withdrawal, transfer — writes a transaction header and **exactly two ledger entries**, a debit and a matching credit, inside one database transaction. Three invariants hold at all times, and the test suite asserts them as post-conditions on every money-movement test:
