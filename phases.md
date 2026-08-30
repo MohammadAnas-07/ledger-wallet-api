@@ -309,6 +309,7 @@ subdivides the work inside it:
 | **Funding gap** | A deposit action on the Dashboard. No withdraw. | The four planned screens contain no way to put money into an account, so a new user's transfer form is unreachable from a cold start. Recorded as a deliberate addition in [design.md §4](design.md#4-screens-to-design), not a quiet scope creep. |
 | **Token handling** | One access token in `localStorage`; any `401` clears it and returns to login | Tokens last 15 minutes, and there is no refresh endpoint and no revocation — by design. Expiry is therefore routine rather than exceptional, and the UI treats it as a silent logout, not an error to report. |
 | **Reference reconciliation** | Skipped — the Apple reference was still unavailable | [design.md §7](design.md#7-stage-2-opening--what-actually-happened) step 1 could not be done. Reconstructed values stand, marked as such in the token file, so a later correction is one stylesheet edit. |
+| **Frontend tests** | Vitest, in chunk 1.2. Pure logic only — no component or DOM testing, so no jsdom | [rules.md §1.2](rules.md#12-definition-of-complete) says a feature is not complete without tests, and a money formatter and an error mapper sitting untested in a repository with 180 backend tests would be the documentation and the code disagreeing. What it covers is deliberate: amount rendering, error translation, and the client's branching — the places where being wrong is silent. |
 
 ### Feature breakdown
 

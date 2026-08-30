@@ -48,6 +48,7 @@ whatever else is listening on that port.
 |---|---|
 | `npm run dev` | Dev server with HMR, API proxy to the backend |
 | `npm run build` | Type-check (`tsc -b`) then production build into `dist/` |
+| `npm test` | Vitest, one pass. Pure logic only — no DOM, no jsdom |
 | `npm run lint` | oxlint |
 | `npm run preview` | Serve the built `dist/` — no proxy, so API calls will fail |
 
@@ -55,12 +56,23 @@ whatever else is listening on that port.
 
 ```
 src/
+  api/
+    types.ts     Every DTO, mirrored field for field
+    json.ts      Parsing that keeps money exact
+    errors.ts    Every failure as one type, plus what the user is told
+    session.ts   Where the token lives, and who hears when it expires
+    client.ts    The one place that talks to the backend
+    endpoints.ts One function per endpoint, so no screen writes a URL
+  format/
+    money.ts     Amounts, always rendered at scale 2
   styles/
     tokens.css   Every color, size, space, radius, and shadow in the app
     base.css     Reset, page defaults, the type roles from design.md §3
   main.tsx       Entry point; loads the font and both stylesheets
   App.tsx        Temporary foundation check — deleted in chunk 1.3
 ```
+
+Tests sit beside what they test, as `*.test.ts`.
 
 **No component hardcodes a design value.** A hex code, font size, or pixel
 spacing outside `tokens.css` is a bug: it is a value that cannot be corrected
