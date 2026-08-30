@@ -9,6 +9,8 @@ import { Notice } from '../../components/Notice'
 import { useResource } from '../../data/useResource'
 import { formatAmount } from '../../format/money'
 
+import { RecentTransactions } from './RecentTransactions'
+
 import './dashboard-screen.css'
 
 export function DashboardScreen() {
@@ -93,6 +95,10 @@ export function DashboardScreen() {
           {selected !== null && (
             <>
               <BalancePanel account={selected} stale={accounts.refreshing} />
+              {/* Keyed by the account: switching wallets remounts this, so the
+                  previous wallet's rows never sit under the new one's balance
+                  while the request is in flight. */}
+              <RecentTransactions key={selected.id} accountId={selected.id} />
               {accounts.data !== null && accounts.data.length > 1 && (
                 <WalletSwitcher
                   accounts={accounts.data}
