@@ -1,0 +1,104 @@
+/*
+ * Design tokens — the entire visual system, in one file.
+ *
+ * Every value here comes from design.md. Nothing invents a value, and nothing
+ * outside this file hardcodes one: a color, size, or spacing literal appearing
+ * in a component is a bug, because it is a value that cannot be corrected here.
+ *
+ * Provenance is recorded inline, because it is not uniform:
+ *   [quoted]        verbatim from the reference. Trustworthy.
+ *   [reconstructed] rebuilt from Apple HIG conventions, because the reference
+ *                   was unavailable both when design.md was written and when
+ *                   Stage 2 opened (design.md §0). Unverified. If the reference
+ *                   ever turns up, these are the values that get corrected —
+ *                   and this file is the only place they exist, which is the
+ *                   whole reason they are tokens.
+ */
+
+:root {
+  /* ---- Color — design.md §2 --------------------------------------------- */
+
+  --canvas: #ffffff;                  /* [quoted]        page and card surfaces */
+  --parchment: #f5f5f7;               /* [quoted]        recessed sections, input fills */
+  --ink: #1d1d1f;                     /* [quoted]        primary text AND every amount */
+  --ink-muted: #6e6e73;               /* [reconstructed] labels, counterparty names */
+  --ink-subtle: #86868b;              /* [reconstructed] timestamps, metadata, placeholders */
+  --separator: #d2d2d7;               /* [reconstructed] hairlines between rows, input borders */
+
+  /*
+   * Accent — Option B, confirmed 2026-08-30. Three colors, three jobs, and no
+   * overlap between them; ink does everything else.
+   *
+   * Two rules travel with these and are easy to break by accident:
+   *   - the balance hero is --ink, never --credit. A balance is a fact, not
+   *     good news.
+   *   - an ordinary debit is --ink, never --error. Red spent on routine spending
+   *     is red the user has learned to ignore by the time a transfer fails.
+   */
+  --action: #0066cc;                  /* [quoted]        buttons, links, focus rings */
+  --credit: #1d8a4e;                  /* [reconstructed] credit amounts, success confirmations */
+  --error: #d70015;                   /* [reconstructed] validation errors, failure states */
+
+  /* ---- Type — design.md §3 ---------------------------------------------- */
+
+  /*
+   * Inter substitutes for SF Pro, which is not licensed off Apple platforms.
+   * -apple-system sits directly behind it so genuine Apple devices still render
+   * real SF Pro. "Inter Variable" is the family name @fontsource-variable/inter
+   * registers; plain "Inter" catches a locally installed copy.
+   */
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+
+  /* Four roles plus buttons. A fifth means the layout is doing too much. */
+  --text-hero-size: 56px;             /* [reconstructed] */
+  --text-hero-weight: 700;
+  --text-hero-tracking: -0.02em;      /* Inter runs wider than SF Pro at display sizes */
+
+  --text-title-size: 28px;            /* [reconstructed] */
+  --text-title-weight: 600;
+  --text-title-tracking: -0.01em;
+
+  --text-body-size: 17px;             /* [reconstructed] */
+  --text-body-weight: 400;
+
+  --text-caption-size: 13px;          /* [reconstructed] */
+  --text-caption-weight: 400;
+
+  --text-button-size: 17px;           /* [reconstructed] */
+  --text-button-weight: 500;
+
+  --text-amount-weight: 500;          /* "medium weight" for credit and debit figures */
+
+  /* ---- Space — design.md §5, 4px base [reconstructed] -------------------- */
+
+  /* Named by value, so 24px in a mockup is --space-24 without arithmetic. */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+
+  /* ---- Radius — design.md §5 [reconstructed] ---------------------------- */
+
+  --radius-input: 8px;                /* inputs, small cards */
+  --radius-panel: 12px;               /* large panels */
+  --radius-pill: 980px;               /* pill buttons — reference convention */
+
+  /* ---- Elevation — design.md §5 [reconstructed] ------------------------- */
+
+  /* Two shadows exist. There is no third, and stacking them is not a way to
+     invent one. Fifty shadowed rows in a list is noise, so lists get hairlines
+     and elevation is reserved for the balance hero and standalone panels. */
+  --shadow-resting: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-raised: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* ---- Motion — design.md §6 -------------------------------------------- */
+
+  /* The only animation in the app: the reference's system-wide press feedback.
+     No page transitions, no count-up on the balance, no row stagger. */
+  --press-scale: 0.95;                /* [quoted] */
+  --press-duration: 120ms;            /* [reconstructed] */
+}

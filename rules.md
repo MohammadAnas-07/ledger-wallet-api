@@ -32,7 +32,7 @@ If any of the three is missing, the feature is in progress, not done. Report it 
 - **No merge to `main` happens without the user explicitly saying "merge kar do"** (or an equally unambiguous instruction).
 - Tests being green is *permission to ask*, not permission to merge.
 - This applies to fast-forward merges, squash merges, PR merges, and rebases onto `main` alike.
-- Same rule for `git push`, force-push, and tags: only when explicitly asked.
+- Same rule for `git push`, force-push, and tags: only when explicitly asked — see §1.5, which makes the push case stricter and per-push.
 
 ### 1.4 Commits: small, focused, one logical change
 
@@ -49,6 +49,25 @@ chore(docker): pin postgres to 16-alpine
 
 - The body explains **why**, when the why is not obvious from the diff. The diff already shows the what.
 - Never commit: `.env`, secrets, `target/`, IDE files, commented-out code, debug `System.out.println`.
+
+### 1.5 Chunks: stop and show; never push unasked
+
+Adopted 2026-08-30, when Stage 2 began. It applies to **all** work from that point on, not
+only to frontend work.
+
+- **Work in chunks.** A chunk is one small, self-contained piece — "the login screen's UI,"
+  "the API client," "the dashboard layout" — not a whole feature and never a whole stage.
+  At the end of each chunk: stop, show the diff, wait for a go-ahead before starting the
+  next one.
+- **Chunks share their feature's branch.** §1.1 is unchanged: a new branch is for a new
+  feature or phase. A new chunk does not get one.
+- **Committing needs no permission**; the commit message is proposed and the commit is made
+  as part of finishing a chunk, per §1.4.
+- **Pushing always needs permission — every time.** Commit, then stop. The diff gets
+  reviewed first, and `git push` only runs on an explicit "push kar do." There is no size or
+  safety exemption: a one-line change is not pushed unasked either. This is the strict
+  reading of the push clause in §1.3, and it wins wherever the two are read differently.
+- **Merging remains a manual call**, exactly as §1.3 already requires.
 
 ---
 

@@ -1,0 +1,31 @@
+.notice {
+  border-radius: var(--radius-input);
+  padding: var(--space-16);
+  margin: 0;
+}
+
+.notice--error {
+  background: rgb(215 0 21 / 0.08);
+  color: var(--error);
+}
+
+.notice--success {
+  background: rgb(29 138 78 / 0.08);
+  color: var(--credit);
+}
+
+.notice--retry {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+/* A second line under the headline: the reason, when the reason is secondary
+   to what actually happened. Its own block so it reads as subordinate rather
+   than as a continuation of the sentence above it. */
+.notice__detail {
+  display: block;
+  margin-top: var(--space-8);
+  /* Inherits the notice's colour rather than going subtle: at caption size on
+     a tinted ground, --ink-subtle would be hard to read. */
+  opacity: 0.85;
+}

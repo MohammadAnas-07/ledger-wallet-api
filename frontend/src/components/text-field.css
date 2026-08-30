@@ -1,0 +1,62 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.field__label {
+  /* Labels are muted, not subtle: they are read, unlike a timestamp. */
+  color: var(--ink-muted);
+}
+
+.field__input {
+  background: var(--parchment);
+  color: var(--ink);
+  font-family: inherit;
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  padding: var(--space-16);
+  width: 100%;
+
+  transition: border-color var(--press-duration) ease-out;
+}
+
+.field__input::placeholder {
+  color: var(--ink-subtle);
+}
+
+.field__input:focus {
+  outline: none;
+  border-color: var(--action);
+  /* A ring rather than a thicker border: a border that changes width on focus
+     moves everything next to it by a pixel. */
+  box-shadow: 0 0 0 3px rgb(0 102 204 / 0.15);
+}
+
+.field__input--invalid {
+  border-color: var(--error);
+}
+
+.field__input--invalid:focus {
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px rgb(215 0 21 / 0.15);
+}
+
+.field__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field__error {
+  color: var(--error);
+}
+
+.field__hint {
+  color: var(--ink-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field__input {
+    transition: none;
+  }
+}
