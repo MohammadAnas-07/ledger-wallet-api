@@ -1,0 +1,155 @@
+/* The same one-column shell as the dashboard and the transfer form: moving
+   between screens should move the content and leave the frame alone. */
+
+.history {
+  min-height: 100vh;
+  background: var(--parchment);
+}
+
+.history__column {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 var(--space-32) var(--space-64);
+}
+
+.history__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+.history__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.history__panel {
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+  padding: var(--space-32);
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-24);
+}
+
+.history__empty {
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+  padding: var(--space-32);
+  color: var(--ink-muted);
+}
+
+.history__retry {
+  display: block;
+  margin-top: var(--space-16);
+}
+
+.history__back {
+  margin: 0;
+}
+
+/* Hover-only underline, like every other link in the app. */
+.history__back a {
+  color: var(--action);
+  font-size: var(--text-caption-size);
+  text-decoration: none;
+}
+
+.history__back a:hover {
+  text-decoration: underline;
+}
+
+/* ---- Pager -------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-24);
+  flex-wrap: wrap;
+  /* Outside the panel, aligned with the heading above it: the count describes
+     the list rather than belonging to it. */
+  padding: 0 var(--space-32);
+}
+
+.pager__count {
+  margin: 0;
+}
+
+.pager__controls {
+  display: flex;
+  gap: var(--space-8);
+}
+
+/* ---- Filter bar --------------------------------------------------------- */
+
+/*
+ * One unit, per design.md §5: the same surface across the wallet control and
+ * both dates, so the bar reads as a single thing rather than three controls
+ * that happen to be adjacent.
+ */
+.filters {
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+  padding: var(--space-24) var(--space-32);
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-16);
+}
+
+/* The wallet is as wide as an account number needs and no wider. */
+.filters__wallet {
+  width: 100%;
+  max-width: 320px;
+}
+
+/* The two dates, side by side. A grid rather than flex-wrap: both have a real
+   minimum — "dd-mm-yyyy" plus the browser picker button — and flex-basis
+   guesses put one of them alone on its own row. */
+.filters__row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: var(--space-16);
+  width: 100%;
+  max-width: 460px;
+}
+
+/* Grid items refuse to shrink past their content unless told to. */
+.filters__row .field {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .filters__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Same treatment as every other link in the app. */
+.filters__clear {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--text-caption-size);
+  color: var(--action);
+  cursor: pointer;
+}
+
+.filters__clear:hover {
+  text-decoration: underline;
+}
+
+.filters__clear:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+  border-radius: var(--space-4);
+}

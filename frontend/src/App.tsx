@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import { AuthScreen } from './screens/auth/AuthScreen'
 import { DashboardScreen } from './screens/dashboard/DashboardScreen'
+import { HistoryScreen } from './screens/history/HistoryScreen'
 import { TransferScreen } from './screens/transfer/TransferScreen'
 
 /**
@@ -23,10 +25,7 @@ function Session() {
   const { status, signIn, register } = useAuth()
 
   if (status === 'checking') {
-    // A stored token is being verified against /auth/me. Deliberately quiet:
-    // this is normally one request on a warm connection, and a spinner that
-    // appears for 80ms reads as a flicker, not as progress.
-    return <main className="app-checking" aria-busy="true" />
+    return <CheckingSession />
   }
 
   if (status === 'signed-out') {
@@ -37,10 +36,41 @@ function Session() {
     <Routes>
       <Route path="/" element={<DashboardScreen />} />
       <Route path="/transfer" element={<TransferScreen />} />
+      <Route path="/history" element={<HistoryScreen />} />
       {/* Anything else is a typo or a stale link. The dashboard is the one
           screen that is always meaningful, so that is where they land. */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  )
+}
+
+/**
+ * The gap while a stored token is verified against /auth/me.
+ *
+ * Quiet at first, and deliberately so: this is normally one request on a warm
+ * connection, and something that appears for 80ms reads as a flicker rather
+ * than as progress.
+ *
+ * But "normally" was carrying the whole argument. With a backend still warming
+ * up, that request took thirty seconds, and for all thirty the app was a blank
+ * page — no text, no indication anything was happening, indistinguishable from
+ * broken. So the quiet has a limit now: past a couple of seconds, long enough
+ * that no healthy load reaches it, the screen says what it is waiting for.
+ */
+function CheckingSession() {
+  const [slow, setSlow] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <main className="app-checking" aria-busy="true">
+      {slow && (
+        <p className="app-checking__note body">Still checking your session…</p>
+      )}
+    </main>
   )
 }
 

@@ -73,11 +73,13 @@ src/
     money.ts     Amounts, always rendered at scale 2
     datetime.ts  Timestamps, 24-hour, in the viewer time zone
   auth/          The session: provider, context, useAuth
-  components/    Button, TextField, SelectField, Notice, AppHeader
+  components/    Button, TextField, SelectField, Notice, AppHeader,
+                 TransactionList — the statement rows, shared by two screens
   screens/
     auth/        Sign in and create account, in one screen with two modes
     dashboard/   Balance hero, and the wallets behind it
     transfer/    Sending money — and working out who can be sent to
+    history/     One wallet's full statement
   styles/
     tokens.css   Every color, size, space, radius, and shadow in the app
     base.css     Reset, page defaults, the type roles from design.md §3
@@ -92,8 +94,11 @@ able to reach `fs` or `process`.
 
 ## Routes
 
-`/` is the dashboard and `/transfer` sends money; anything else redirects to the
-dashboard. Signing out is not a redirect — with no session none of the routes
+`/` is the dashboard, `/transfer` sends money, and `/history` is one wallet's
+full statement; anything else redirects to the dashboard. What the history screen
+is showing lives in its query string — which wallet, and later which dates and
+which page — so a refresh lands on the same rows and the view can be sent to
+someone as a link. Signing out is not a redirect — with no session none of the routes
 are rendered at all, which is also why a deep link survives signing in: open
 /transfer with an expired token and you sign in *at* /transfer.
 
