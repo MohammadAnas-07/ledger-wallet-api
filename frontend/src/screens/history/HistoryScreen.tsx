@@ -3,9 +3,12 @@ import { Link, useSearchParams } from 'react-router'
 
 import { getStatement, listAccounts } from '../../api/endpoints'
 import { userMessage } from '../../api/errors'
+import type { AccountResponse, Uuid } from '../../api/types'
 import { AppHeader } from '../../components/AppHeader'
 import { Button } from '../../components/Button'
 import { Notice } from '../../components/Notice'
+import { SelectField } from '../../components/SelectField'
+import { TextField } from '../../components/TextField'
 import {
   TransactionList,
   TransactionListPlaceholder,
@@ -23,13 +26,48 @@ import './history-screen.css'
  */
 const PAGE_SIZE = 20
 
+/** `YYYY-MM-DD`, which is what a date input reads and writes. */
+const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * A calendar day the reader picked, as the instant that day begins for them.
+ *
+ * Parsed without a zone suffix on purpose, which makes it local midnight rather
+ * than UTC midnight. The rows show local time, so a filter that meant something
+ * else would quietly disagree with the timestamps beside it — near midnight,
+ * by a whole day.
+ */
+function startOfDay(day: string): string | undefined {
+  const at = new Date(`${day}T00:00:00`)
+  return Number.isNaN(at.getTime()) ? undefined : at.toISOString()
+}
+
+/**
+ * The same day's last instant.
+ *
+ * The backend treats `to` as inclusive but takes an instant, so sending the
+ * day's midnight would ask for a range that ends before the day begins —
+ * picking a single day would return nothing at all, on a day with
+ * transactions in it.
+ */
+function endOfDay(day: string): string | undefined {
+  const at = new Date(`${day}T23:59:59.999`)
+  return Number.isNaN(at.getTime()) ? undefined : at.toISOString()
+}
+
+/** A date from the URL, ignoring anything that is not one. */
+function readDay(params: URLSearchParams, name: string): string {
+  const raw = params.get(name) ?? ''
+  return DATE_SHAPE.test(raw) ? raw : ''
+}
+
 /**
  * One wallet's full statement.
  *
- * Everything the view is showing lives in the query string — which wallet, and
- * later which dates and which page. That is not decoration: it means a refresh
- * lands on the same rows, the back button walks back through what was actually
- * looked at, and the whole view can be sent to someone as a link.
+ * Everything the view is showing lives in the query string — which wallet,
+ * which dates, which page. That is not decoration: it means a refresh lands on
+ * the same rows, the back button walks back through what was actually looked
+ * at, and the whole view can be sent to someone as a link.
  */
 export function HistoryScreen() {
   const [params, setParams] = useSearchParams()
@@ -64,17 +102,45 @@ export function HistoryScreen() {
   }, [account, requested, params, setParams])
 
   const page = readPage(params)
+  const from = readDay(params, 'from')
+  const to = readDay(params, 'to')
+
+  const filtered = from !== '' || to !== ''
+  /* A range that ends before it starts returns nothing, which reads as "this
+   * wallet is empty" rather than "these dates are the wrong way round". Named
+   * here instead, and the request is not sent. */
+  const backwards = from !== '' && to !== '' && from > to
 
   const statement = useResource(
     useCallback(
       () =>
-        account === null
+        account === null || backwards
           ? Promise.resolve(null)
-          : getStatement(account.id, { page, size: PAGE_SIZE }),
-      [account, page],
+          : getStatement(account.id, {
+              page,
+              size: PAGE_SIZE,
+              from: from === '' ? undefined : startOfDay(from),
+              to: to === '' ? undefined : endOfDay(to),
+            }),
+      [account, page, from, to, backwards],
     ),
-    [account?.id, page],
+    [account?.id, page, from, to, backwards],
   )
+
+  /**
+   * Every filter change starts a new list, so it starts at its first page.
+   *
+   * Without this, narrowing to a week while sitting on page three asks for the
+   * third page of a list that now has one — an empty screen on a wallet that
+   * has exactly what was asked for.
+   */
+  function changeFilter(mutate: (next: URLSearchParams) => void) {
+    const next = new URLSearchParams(params)
+    mutate(next)
+    next.delete('page')
+    setParams(next)
+    window.scrollTo({ top: 0 })
+  }
 
   const rows = statement.data?.content ?? []
   const loading = accounts.loading || statement.loading
@@ -134,10 +200,19 @@ export function HistoryScreen() {
         <main className="history__main">
           <header className="history__header">
             <h1 className="title">Transactions</h1>
-            {account !== null && (
-              <p className="caption">{account.accountNumber}</p>
-            )}
           </header>
+
+          {account !== null && (
+            <FilterBar
+              wallets={wallets}
+              accountId={account.id}
+              from={from}
+              to={to}
+              backwards={backwards}
+              filtered={filtered}
+              onChange={changeFilter}
+            />
+          )}
 
           {accounts.error !== null && accounts.data === null && (
             <Notice tone={accounts.error.isRetryable ? 'retry' : 'error'}>
@@ -179,8 +254,16 @@ export function HistoryScreen() {
               )}
 
               {statement.data !== null && rows.length === 0 && (
+                /*
+                 * Two different emptinesses, and saying the wrong one sends the
+                 * reader looking for a problem that is not there. A wallet with
+                 * no history has nothing to find; a wallet with history and a
+                 * range that misses it has plenty, just not here.
+                 */
                 <p className="history__empty body">
-                  Nothing has moved in this wallet yet.
+                  {filtered
+                    ? 'No transactions in this date range.'
+                    : 'Nothing has moved in this wallet yet.'}
                 </p>
               )}
 
@@ -205,6 +288,108 @@ export function HistoryScreen() {
         </main>
       </div>
     </div>
+  )
+}
+
+/**
+ * Which wallet, and between which dates.
+ *
+ * design.md §5 asks for one unit: the same surface across the wallet control
+ * and both date inputs, so the bar reads as a single thing rather than three
+ * controls that happen to sit together.
+ *
+ * Native date inputs, for the same reasons the select is native — the browser's
+ * own picker, keyboard entry, and the platform picker on a phone. A hand-built
+ * calendar has to earn all three back before it is worth anything.
+ */
+function FilterBar({
+  wallets,
+  accountId,
+  from,
+  to,
+  backwards,
+  filtered,
+  onChange,
+}: {
+  wallets: AccountResponse[]
+  accountId: Uuid
+  from: string
+  to: string
+  backwards: boolean
+  filtered: boolean
+  onChange: (mutate: (next: URLSearchParams) => void) => void
+}) {
+  return (
+    <section className="filters">
+      {/*
+        * On its own line, and not only because three controls do not fit: the
+        * wallet chooses what is being read, where the dates narrow it. Putting
+        * them side by side reads as three equal filters, which they are not.
+        */}
+      <div className="filters__wallet">
+        <SelectField
+          label="Wallet"
+          value={accountId}
+          onChange={(event) =>
+            onChange((next) => next.set('account', event.target.value))
+          }
+        >
+          {wallets.map((wallet) => (
+            <option key={wallet.id} value={wallet.id}>
+              {wallet.accountNumber}
+            </option>
+          ))}
+        </SelectField>
+      </div>
+
+      <div className="filters__row">
+        <TextField
+          label="From"
+          type="date"
+          value={from}
+          // An empty date input clears the parameter rather than writing an
+          // empty one, so a cleared filter leaves no trace in the URL.
+          onChange={(event) =>
+            onChange((next) =>
+              event.target.value === ''
+                ? next.delete('from')
+                : next.set('from', event.target.value),
+            )
+          }
+        />
+
+        <TextField
+          label="To"
+          type="date"
+          value={to}
+          error={backwards ? 'This is before the From date' : undefined}
+          onChange={(event) =>
+            onChange((next) =>
+              event.target.value === ''
+                ? next.delete('to')
+                : next.set('to', event.target.value),
+            )
+          }
+        />
+      </div>
+
+      {/* Only once there is something to clear. A permanently visible Clear on
+          an unfiltered list is a control that does nothing most of the time. */}
+      {filtered && (
+        <button
+          type="button"
+          className="filters__clear"
+          onClick={() =>
+            onChange((next) => {
+              next.delete('from')
+              next.delete('to')
+            })
+          }
+        >
+          Clear dates
+        </button>
+      )}
+    </section>
   )
 }
 
