@@ -3,8 +3,7 @@ import type { ReactNode } from 'react'
 
 import { login, me, register as registerAccount } from '../api/endpoints'
 import { clearToken, onSessionExpired, readToken, writeToken } from '../api/session'
-import type { UserResponse } from '../api/types'
-import type { LoginValues, RegisterValues } from '../screens/auth/AuthScreen'
+import type { LoginRequest, RegisterRequest, UserResponse } from '../api/types'
 
 import { AuthContext } from './context'
 import type { AuthState, AuthStatus } from './context'
@@ -71,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [status])
 
-  const signIn = useCallback(async (values: LoginValues) => {
+  const signIn = useCallback(async (values: LoginRequest) => {
     const auth = await login(values)
     writeToken(auth.accessToken)
 
@@ -92,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const register = useCallback(async (values: RegisterValues) => {
+  const register = useCallback(async (values: RegisterRequest) => {
     // Returns the created user and no token. Signing in is a separate call, and
     // AuthScreen makes it — so that a registration that works followed by a
     // sign-in that does not can be told apart from a registration that failed.

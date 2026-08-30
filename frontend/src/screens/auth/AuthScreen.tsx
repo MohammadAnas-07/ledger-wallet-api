@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { ApiError, fieldErrors, userMessage } from '../../api/errors'
+import type { LoginRequest, RegisterRequest } from '../../api/types'
 import { Button } from '../../components/Button'
 import { Notice } from '../../components/Notice'
 import type { NoticeTone } from '../../components/Notice'
@@ -9,25 +10,23 @@ import { TextField } from '../../components/TextField'
 
 import './auth-screen.css'
 
-export type AuthMode = 'login' | 'register'
+type AuthMode = 'login' | 'register'
 
-export interface LoginValues {
-  email: string
-  password: string
-}
-
-export interface RegisterValues extends LoginValues {
-  fullName: string
-}
-
+/*
+ * The form collects exactly what the two endpoints take, so it hands over
+ * LoginRequest and RegisterRequest rather than declaring its own pair of
+ * identical shapes. Two structurally identical types are two types that can
+ * drift, and the one owned by a screen would be the wrong one to depend on:
+ * the contract belongs to api/types, which is where everything else reads it.
+ */
 export interface AuthScreenProps {
   /** Resolves when the caller is signed in. Rejects with an ApiError. */
-  onLogin: (values: LoginValues) => Promise<void>
+  onLogin: (values: LoginRequest) => Promise<void>
   /**
    * Resolves when the account exists. Does **not** sign anyone in — the
    * backend's register endpoint answers with a user and no token.
    */
-  onRegister: (values: RegisterValues) => Promise<void>
+  onRegister: (values: RegisterRequest) => Promise<void>
 }
 
 interface Message {

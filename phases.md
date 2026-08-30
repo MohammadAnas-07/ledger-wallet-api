@@ -326,6 +326,14 @@ that feature starts.
 Feature 1 carries the foundation — tokens, API client, auth — because every later feature
 depends on all three, and building them inside a screen would bury them there.
 
+**Carried into Feature 2, chunk 1.** `api/json.ts` keeps a hardcoded list of the
+BigDecimal field names it must protect from the double. Feature 2 is the first time new
+money-carrying responses are actually read — `AccountResponse.balance`,
+`StatementEntryResponse.amount` and `balanceAfter` — so that chunk adds a test that fails
+when a money field exists in the types and is missing from that list. Until then the list
+is guarded by a comment, and a comment is not a test: a new money field left out of it
+compiles, passes, and silently arrives as a rounded double.
+
 #### Feature 1 — chunks
 
 | Chunk | Delivers | Deliberately not in it |

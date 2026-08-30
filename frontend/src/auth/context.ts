@@ -1,7 +1,6 @@
 import { createContext } from 'react'
 
-import type { UserResponse } from '../api/types'
-import type { LoginValues, RegisterValues } from '../screens/auth/AuthScreen'
+import type { LoginRequest, RegisterRequest, UserResponse } from '../api/types'
 
 /**
  * Three states, not a boolean.
@@ -18,9 +17,9 @@ export interface AuthState {
   /** Set exactly when status is `signed-in`. */
   user: UserResponse | null
   /** Signs in and loads the profile. Rejects with an ApiError. */
-  signIn: (values: LoginValues) => Promise<void>
+  signIn: (values: LoginRequest) => Promise<void>
   /** Creates the account. Signs nobody in — the backend issues no token here. */
-  register: (values: RegisterValues) => Promise<void>
+  register: (values: RegisterRequest) => Promise<void>
   signOut: () => void
 }
 
