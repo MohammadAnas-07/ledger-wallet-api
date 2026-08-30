@@ -63,8 +63,12 @@ src/
     session.ts   Where the token lives, and who hears when it expires
     client.ts    The one place that talks to the backend
     endpoints.ts One function per endpoint, so no screen writes a URL
+  data/
+    useResource.ts One way to read from the API: loading, error, refresh, retry
   format/
+    locale.ts    One locale, so amounts and dates agree
     money.ts     Amounts, always rendered at scale 2
+    datetime.ts  Timestamps, 24-hour, in the viewer time zone
   auth/          The session: provider, context, useAuth
   components/    Button, TextField, Notice — the three patterns, nothing more
   screens/
@@ -77,7 +81,10 @@ src/
   App.tsx        The protected route: which screen the session allows
 ```
 
-Tests sit beside what they test, as `*.test.ts`.
+Tests sit beside what they test, as `*.test.ts`, and are type-checked by their
+own `tsconfig.test.json`. That split is not tidiness: the MONEY_FIELDS guard
+reads `types.ts` off disk, so tests need Node types, and app code must not be
+able to reach `fs` or `process`.
 
 **No component hardcodes a design value.** A hex code, font size, or pixel
 spacing outside `tokens.css` is a bug: it is a value that cannot be corrected

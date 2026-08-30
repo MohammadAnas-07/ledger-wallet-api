@@ -19,8 +19,12 @@
  * would turn `page`, `totalElements` and `expiresInSeconds` into strings too,
  * and those genuinely are numbers. Adding a money field to a DTO means adding
  * it here — which is why the list sits next to the types it mirrors.
+ *
+ * Exported for one reason: json.test.ts reads types.ts and fails when a field
+ * typed as Money is missing here. The comment above is advice; that test is what
+ * actually enforces it.
  */
-const MONEY_FIELDS = new Set([
+export const MONEY_FIELDS = new Set([
   'amount',
   'balance',
   'balanceAfter',

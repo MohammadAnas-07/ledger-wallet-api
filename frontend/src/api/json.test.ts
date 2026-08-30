@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
-import { parseJson, parsesMoneyExactly } from './json'
+import { MONEY_FIELDS, parseJson, parsesMoneyExactly } from './json'
 
 interface Sample {
   balance: string
@@ -54,5 +57,50 @@ describe('parseJson', () => {
     // Not theoretical: a dev proxy pointing at the wrong port answers with
     // somebody else's HTML.
     expect(() => parseJson('<!DOCTYPE HTML><html>404</html>')).toThrow()
+  })
+})
+
+/*
+ * The guard the comment in json.ts cannot be.
+ *
+ * MONEY_FIELDS is a hand-written list, and a money field left out of it does not
+ * fail to compile and does not fail any other test — it just quietly arrives as
+ * a rounded double, on a screen showing somebody's balance. TypeScript cannot
+ * catch it either, because the types are gone by the time this code runs.
+ *
+ * So the source is read as text. It is a blunt instrument, and it is the only
+ * one that actually fails when someone adds `fee: Money` to a DTO and stops
+ * there.
+ */
+describe('MONEY_FIELDS', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('./types.ts', import.meta.url)),
+    'utf8',
+  )
+
+  // Matches a property declaration whose type is Money: `  balance: Money`,
+  // including optional (`amount?: Money`) and unioned (`fee: Money | null`).
+  const declared = new Set(
+    [...source.matchAll(/^\s+(\w+)\??:\s*Money\b/gm)].map((match) => match[1]),
+  )
+
+  it('finds the money fields in types.ts at all', () => {
+    // If the regex stops matching — the file is reformatted, Money is renamed —
+    // every other assertion here passes vacuously. This is the canary.
+    expect(declared.size).toBeGreaterThan(3)
+  })
+
+  it('covers every field typed as Money', () => {
+    const missing = [...declared].filter((field) => !MONEY_FIELDS.has(field))
+    expect(missing, `add these to MONEY_FIELDS in json.ts: ${missing.join(', ')}`)
+      .toEqual([])
+  })
+
+  it('carries nothing that is no longer a money field', () => {
+    // A stale name is harmless at runtime but misleading to read, and it hides
+    // that a field was renamed rather than removed.
+    const stale = [...MONEY_FIELDS].filter((field) => !declared.has(field))
+    expect(stale, `remove these from MONEY_FIELDS in json.ts: ${stale.join(', ')}`)
+      .toEqual([])
   })
 })
