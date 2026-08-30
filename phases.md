@@ -268,11 +268,11 @@ deliberately does not use, and two error codes the application never emits.
 
 ---
 
-## Stage 2: Frontend — In Progress
+## Stage 2: Frontend — Complete
 
-**Started 2026-08-30.** The gate below was met on 2026-08-29; it is kept for the record,
-because it is why this section sat empty through all of Stage 1 — not because it still
-binds anything.
+**Started and finished 2026-08-30.** All four features are merged to `main` and pushed.
+The gate below was met on 2026-08-29; it is kept for the record, because it is why this
+section sat empty through all of Stage 1 — not because it still binds anything.
 
 > **Frontend kaam Stage 1 complete hone se pehle shuru nahi hoga — koi bhi UI-related task is beech mein aaye to usse Stage 2 mein park karo, abhi mat karo.**
 
@@ -321,7 +321,7 @@ that feature starts.
 | 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | ✅ Merged 2026-08-30 |
 | 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | 6 | ✅ Merged 2026-08-30 |
 | 3 | Transfer form | `feature/frontend-transfer` | 3 | ✅ Merged 2026-08-30 |
-| 4 | Transaction history | `feature/frontend-history` | ~3 | Not started |
+| 4 | Transaction history | `feature/frontend-history` | 4 | ✅ Merged 2026-08-30 |
 
 Feature 1 carries the foundation — tokens, API client, auth — because every later feature
 depends on all three, and building them inside a screen would bury them there.
@@ -339,6 +339,43 @@ after the dashboard was run by hand, which left `422 INSUFFICIENT_FUNDS` with ex
 place it could ever be seen: the transfer form. That made design.md §4's assumption
 load-bearing rather than convenient. Feature 3 covered it: sending from an empty wallet
 returns 422 and the form says so with everything typed still in it.
+
+### What Stage 2 rests on
+
+- **All four screens from [design.md §4](design.md#4-screens-to-design)**, plus the deposit
+  action added there on 2026-08-30 to close a hole the four did not cover: without it a new
+  user has a wallet holding `0.00` and no way to change that, so the transfer form is
+  unreachable from a cold start.
+- **65 frontend tests**, pure logic only — money formatting, error translation, the client's
+  branching, the resource state machine, date formatting, and the counterparty list. No DOM
+  and no renderer, by decision: what a screen looks like is checked by looking at it.
+- **Every chunk verified against a running backend through the UI**, not against mocks.
+  Where a path could not be reached by hand — a `409` under contention, an unreachable
+  server, a burst of submits inside one tick — it was forced and measured rather than
+  reasoned about.
+
+Three defects were found that way, and none of them by reading the code:
+
+- **A burst of clicks moved money five times.** Both guards were React state, read from a
+  closure that every submit in one tick shares, so each minted its own idempotency key and
+  the backend was correctly asked for five separate transfers. Fixed with a synchronous
+  ref, on the transfer form and on the deposit form, which had the same shape.
+- **A login failure was never shown.** The submit handler had a `try`/`finally` and no
+  `catch`, so every `ApiError` became an unhandled rejection and the form returned to idle
+  saying nothing.
+- **The session check left a blank page.** Silent by design for a fast request, and with no
+  answer at all for a slow one — thirty seconds of nothing while a backend warmed up.
+
+**Not done, and known:**
+
+- **CORS on the backend** — still parked, see below. The dev proxy covers development;
+  serving a build from another origin does not work yet.
+- **Multi-tab sign-out** does not propagate. Signing out in one tab leaves another running
+  until its next request returns `401`.
+- **Nothing acts on the token's expiry ahead of time.** A session ends when a request comes
+  back `401`, not when the fifteen minutes are up.
+- **The Apple reference was never available**, so roughly half the design tokens remain
+  reconstructed and marked as such in `tokens.css`.
 
 #### Feature 1 — chunks
 
