@@ -47,3 +47,9 @@ desktop.ini
 # Logs
 *.log
 logs/
+
+# Node — frontend/ (frontend/.gitignore covers the same ground; this is here so
+# a stray node_modules anywhere in the tree is never staged by accident)
+node_modules/
+dist/
+npm-debug.log*

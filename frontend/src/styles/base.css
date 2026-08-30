@@ -1,0 +1,103 @@
+/*
+ * Base layer: the reset, the page defaults, and the five type roles from
+ * design.md §3 as classes carrying their names verbatim. Keeping the names
+ * identical means a line in the design brief maps to exactly one class here,
+ * with nothing to translate in between.
+ *
+ * No component styles live in this file. Buttons, inputs, and rows arrive with
+ * the screens that need them.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* No dark mode: design.md §6, light theme only. Declared rather than left to
+     the browser, so a UA in dark mode does not repaint form controls. */
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  line-height: 1.5;
+
+  /*
+   * Tabular numerals, applied once at the root rather than per figure.
+   * design.md §3 requires them on every number in the app — balances, amounts,
+   * account numbers — and setting them globally means a new screen cannot
+   * forget. Proportional digits make a column of amounts ragged and genuinely
+   * harder to compare, which is the one typographic decision in a financial UI
+   * that changes whether the interface can be read at a glance.
+   */
+  font-variant-numeric: tabular-nums;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+/* ---- Type roles — design.md §3 ------------------------------------------ */
+
+.hero-display {
+  font-size: var(--text-hero-size);
+  font-weight: var(--text-hero-weight);
+  letter-spacing: var(--text-hero-tracking);
+  line-height: 1.05;
+}
+
+.title {
+  font-size: var(--text-title-size);
+  font-weight: var(--text-title-weight);
+  letter-spacing: var(--text-title-tracking);
+  line-height: 1.2;
+}
+
+.body {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+}
+
+.caption {
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-caption-weight);
+  /* Captions are always subtle ink. The role and the color are one decision,
+     so they are not separable here. */
+  color: var(--ink-subtle);
+}
+
+/* ---- Amounts ------------------------------------------------------------ */
+
+/*
+ * Every figure the ledger produces. Right-aligned so decimal points stack down
+ * a column; the sign and the color come from the credit/debit classes, never
+ * from here. Rendering at fixed scale 2 is the formatter's job (chunk 1.2) —
+ * CSS cannot enforce it, and 1250.5 would still be wrong in a wallet.
+ */
+.amount {
+  font-weight: var(--text-amount-weight);
+  text-align: right;
+}
+
+.amount--credit {
+  color: var(--credit);
+}
+
+/* Stated rather than left to inherit: a debit being neutral ink is a decision
+   in design.md §2, and someone will otherwise "fix" it to red one day. */
+.amount--debit {
+  color: var(--ink);
+}

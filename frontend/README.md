@@ -1,0 +1,70 @@
+# Frontend — Wallet & Ledger API
+
+The Stage 2 UI. Four screens against the Stage 1 backend, built to
+[design.md](../design.md); the chunk-by-chunk plan is in
+[phases.md](../phases.md#stage-2-frontend--in-progress).
+
+React 19 + Vite + TypeScript. No UI library and no component framework —
+design.md §6 rules one out, and three patterns cover four screens.
+
+## Running it
+
+```bash
+npm install
+npm run dev
+```
+
+The dev server listens on <http://localhost:5173>.
+
+**It needs the backend running.** From the repository root:
+
+```bash
+docker compose up
+```
+
+Calls to `/api/*` are proxied there by `vite.config.ts`. That proxy is not a
+convenience — the backend has no CORS configuration, so a browser on :5173
+cannot reach it directly, and going through the proxy makes every call
+same-origin. Serving a production build from a different origin will need CORS
+on the backend; that change is parked in phases.md rather than made here.
+
+### The backend port is not always 8080
+
+`docker compose up` publishes the app on `SERVER_PORT` from the repository root
+`.env`, which is 8080 only if nothing else on that machine holds it. Point the
+proxy at whatever it actually is:
+
+```bash
+cp .env.example .env.local   # then edit VITE_API_TARGET
+```
+
+`.env.local` is git-ignored, so each machine keeps its own. Getting this wrong
+looks like a routing bug in this app: every API call returns a 404 served by
+whatever else is listening on that port.
+
+## Scripts
+
+| Command | Does |
+|---|---|
+| `npm run dev` | Dev server with HMR, API proxy to the backend |
+| `npm run build` | Type-check (`tsc -b`) then production build into `dist/` |
+| `npm run lint` | oxlint |
+| `npm run preview` | Serve the built `dist/` — no proxy, so API calls will fail |
+
+## Layout
+
+```
+src/
+  styles/
+    tokens.css   Every color, size, space, radius, and shadow in the app
+    base.css     Reset, page defaults, the type roles from design.md §3
+  main.tsx       Entry point; loads the font and both stylesheets
+  App.tsx        Temporary foundation check — deleted in chunk 1.3
+```
+
+**No component hardcodes a design value.** A hex code, font size, or pixel
+spacing outside `tokens.css` is a bug: it is a value that cannot be corrected
+in one place. This matters more than usual here, because the Apple reference
+design.md was built from was never available — the reconstructed values are
+marked as such in `tokens.css`, and correcting them later should be an edit to
+that one file.
