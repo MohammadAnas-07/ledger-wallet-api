@@ -1,0 +1,140 @@
+/*
+ * The dashboard is read, not browsed. One column, generous whitespace, and the
+ * balance is the only thing with any weight on the page.
+ */
+
+.dashboard {
+  min-height: 100vh;
+  background: var(--parchment);
+}
+
+.dashboard__column {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 var(--space-32) var(--space-64);
+}
+
+.dashboard__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+/* ---- Balance hero ------------------------------------------------------- */
+
+.balance {
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  /* Resting, not raised: the auth panel was the only object on its page and
+     could float. This one sits at the top of a column of content. */
+  box-shadow: var(--shadow-resting);
+  padding: var(--space-32);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.balance__figure {
+  /* --ink by inheritance, and stated nowhere else on purpose: a balance is
+     never --credit. design.md §2. */
+  margin: var(--space-8) 0;
+}
+
+.balance__figure--placeholder {
+  color: var(--separator);
+}
+
+.balance__status {
+  /* The one caption here that is not metadata but a warning about the account
+     itself, so it carries error ink rather than subtle. */
+  color: var(--error);
+}
+
+/* ---- Other wallets ------------------------------------------------------ */
+
+.wallets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.wallets__heading {
+  padding: 0 var(--space-32);
+}
+
+.wallets__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+  overflow: hidden;
+}
+
+.wallets__row {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-24);
+
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  padding: var(--space-16) var(--space-32);
+  cursor: pointer;
+
+  transition: background-color var(--press-duration) ease-out;
+}
+
+.wallets__list li + li .wallets__row {
+  /* A hairline between rows, and none above the first — the panel edge is
+     already a boundary. */
+  border-top: 1px solid var(--separator);
+}
+
+.wallets__row:hover {
+  background: var(--parchment);
+}
+
+.wallets__row:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+/* ---- Empty ------------------------------------------------------------- */
+
+.empty {
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+  padding: var(--space-48) var(--space-32);
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-24);
+}
+
+/* ---- Retry inside a notice ---------------------------------------------- */
+
+.dashboard__retry {
+  display: block;
+  margin-top: var(--space-16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wallets__row {
+    transition: none;
+  }
+}
+
+/* The one action that is about the account list rather than the money in it.
+   Left-aligned with the panels above rather than centred: it is a footnote to
+   them, not a call to action of its own. */
+.dashboard__add {
+  margin: 0;
+}

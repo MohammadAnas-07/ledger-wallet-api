@@ -1,7 +1,7 @@
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import { AuthScreen } from './screens/auth/AuthScreen'
-import { SignedInScreen } from './screens/signed-in/SignedInScreen'
+import { DashboardScreen } from './screens/dashboard/DashboardScreen'
 
 /**
  * Which screen the session allows.
@@ -30,7 +30,7 @@ function Session() {
     return <AuthScreen onLogin={signIn} onRegister={register} />
   }
 
-  return <SignedInScreen />
+  return <DashboardScreen />
 }
 
 export default function App() {

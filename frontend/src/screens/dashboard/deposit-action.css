@@ -1,0 +1,24 @@
+/* Inside the balance panel, below the figure it changes. No modal, no overlay:
+   design.md §4 asked for a secondary button and an amount input, and the three
+   patterns in §5 do not include a dialog. */
+
+.deposit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  align-items: flex-start;
+  margin-top: var(--space-16);
+}
+
+.deposit__fields {
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-width: 240px;
+}
+
+.deposit__actions {
+  display: flex;
+  gap: var(--space-8);
+}

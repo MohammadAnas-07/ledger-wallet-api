@@ -16,7 +16,9 @@
 
 import type { EntryDirection, Money } from '../api/types'
 
-const GROUPER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+import { LOCALE } from './locale'
+
+const GROUPER = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 })
 
 /**
  * `"1250.5"` → `"1,250.50"`, `"-40"` → `"40.00"`.
