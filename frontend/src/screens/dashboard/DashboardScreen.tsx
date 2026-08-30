@@ -9,6 +9,7 @@ import { Notice } from '../../components/Notice'
 import { useResource } from '../../data/useResource'
 import { formatAmount } from '../../format/money'
 
+import { DepositAction } from './DepositAction'
 import { RecentTransactions } from './RecentTransactions'
 
 import './dashboard-screen.css'
@@ -32,6 +33,22 @@ export function DashboardScreen() {
 
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<ApiError | null>(null)
+
+  /*
+   * Bumped after money moves, and folded into the transaction list's key so the
+   * list is remounted rather than refreshed.
+   *
+   * A remount is the honest thing here: after a deposit the previous rows are
+   * not stale, they are wrong — the new entry belongs at the top and the
+   * running balance on every row below it has changed. Starting the list over
+   * says that, where a quiet refresh under the old rows would not.
+   */
+  const [movements, setMovements] = useState(0)
+
+  function onMoneyMoved() {
+    accounts.reload()
+    setMovements((count) => count + 1)
+  }
 
   async function createWallet() {
     setCreating(true)
@@ -94,11 +111,19 @@ export function DashboardScreen() {
 
           {selected !== null && (
             <>
-              <BalancePanel account={selected} stale={accounts.refreshing} />
-              {/* Keyed by the account: switching wallets remounts this, so the
-                  previous wallet's rows never sit under the new one's balance
-                  while the request is in flight. */}
-              <RecentTransactions key={selected.id} accountId={selected.id} />
+              <BalancePanel
+                account={selected}
+                stale={accounts.refreshing}
+                onDeposited={onMoneyMoved}
+              />
+              {/* Keyed by the account and by how much has moved: switching
+                  wallets remounts this, so the previous wallet's rows never sit
+                  under the new one's balance while the request is in flight —
+                  and so does a deposit, which invalidates every row below it. */}
+              <RecentTransactions
+                key={`${selected.id}:${movements}`}
+                accountId={selected.id}
+              />
               {accounts.data !== null && accounts.data.length > 1 && (
                 <WalletSwitcher
                   accounts={accounts.data}
@@ -148,9 +173,11 @@ function resolveSelected(
 function BalancePanel({
   account,
   stale,
+  onDeposited,
 }: {
   account: AccountResponse
   stale: boolean
+  onDeposited: () => void
 }) {
   return (
     <section className="balance" aria-busy={stale || undefined}>
@@ -166,6 +193,13 @@ function BalancePanel({
           This wallet is {account.status.toLowerCase()}.
         </p>
       )}
+      {/* Keyed by the account so switching wallets closes a half-filled form
+          rather than carrying an amount across to a different balance. */}
+      <DepositAction
+        key={account.id}
+        accountId={account.id}
+        onDeposited={onDeposited}
+      />
     </section>
   )
 }
