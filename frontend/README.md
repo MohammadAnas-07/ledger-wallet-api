@@ -64,7 +64,8 @@ src/
     client.ts    The one place that talks to the backend
     endpoints.ts One function per endpoint, so no screen writes a URL
   data/
-    useResource.ts One way to read from the API: loading, error, refresh, retry
+    resourceState.ts The loading/error/refresh state machine, no React in it
+    useResource.ts   The hook around it: when to ask, whose answer still counts
   format/
     locale.ts    One locale, so amounts and dates agree
     money.ts     Amounts, always rendered at scale 2

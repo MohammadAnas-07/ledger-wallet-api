@@ -3,23 +3,22 @@ import type { DependencyList } from 'react'
 
 import { ApiError } from '../api/errors'
 
+import { failed, initial, loaded, started } from './resourceState'
+import type { ResourceState } from './resourceState'
+
 /*
  * One way to read something from the API.
  *
  * Every screen in this app needs the same four things — is it loading, did it
  * fail, is it being refreshed, and how do I ask again — and four screens each
  * inventing that is four chances to get the last one wrong.
+ *
+ * What state follows what lives in resourceState.ts, with no React in it, and
+ * is tested there. This file is only the wiring: when to ask, and which answer
+ * is still the one being waited for.
  */
 
-export interface Resource<T> {
-  /** Null until the first load succeeds. Kept across a failed refresh. */
-  data: T | null
-  error: ApiError | null
-  /** First load, with nothing on screen yet. */
-  loading: boolean
-  /** Loading again with data already showing. A different state because it is
-   *  a different screen: a refresh must not blank what the user is reading. */
-  refreshing: boolean
+export interface Resource<T> extends ResourceState<T> {
   reload: () => void
 }
 
@@ -35,15 +34,10 @@ export function useResource<T>(
    * the only way to read the current one inside a setter is an updater
    * function. Updaters have to be pure, and React re-runs them; a setLoading
    * call hidden inside one puts the screen back into loading after it has
-   * finished, so a spinner sits above the data it was waiting for. Held
+   * finished, so a placeholder sits above the data it was waiting for. Held
    * together, every transition is one pure computation.
    */
-  const [state, setState] = useState<Omit<Resource<T>, 'reload'>>({
-    data: null,
-    error: null,
-    loading: true,
-    refreshing: false,
-  })
+  const [state, setState] = useState<ResourceState<T>>(initial<T>)
 
   /*
    * The loader is a closure and gets a new identity every render, so it is held
@@ -69,41 +63,26 @@ export function useResource<T>(
   const run = useCallback(() => {
     const mine = ++ticket.current
 
-    // Which of the two loading states this is depends on whether there is
-    // anything on screen worth preserving.
-    setState((previous) =>
-      previous.data === null
-        ? { data: null, error: null, loading: true, refreshing: false }
-        : { data: previous.data, error: null, loading: false, refreshing: true },
-    )
+    setState(started)
 
     loadRef.current().then(
       (result) => {
         if (mine !== ticket.current) {
           return
         }
-        setState({ data: result, error: null, loading: false, refreshing: false })
+        setState(loaded(result))
       },
       (cause: unknown) => {
         if (mine !== ticket.current) {
           return
         }
         /*
-         * The data already on screen is deliberately kept. A failed refresh
-         * leaves the last known balance visible with an error beside it, which
-         * is more useful than an empty panel — and the screen is the one that
-         * decides how loudly to say the figure may be stale.
-         *
          * A 401 never really surfaces here: the client ends the session, the
          * provider signs out, and this component unmounts before anything can
          * render the error.
          */
-        setState((previous) => ({
-          data: previous.data,
-          error: toApiError(cause),
-          loading: false,
-          refreshing: false,
-        }))
+        const error = toApiError(cause)
+        setState((previous) => failed(previous, error))
       },
     )
   }, [])
