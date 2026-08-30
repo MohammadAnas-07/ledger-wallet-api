@@ -1,0 +1,54 @@
+.button {
+  /* 980px is the reference's pill convention: large enough that the radius is
+     always half the height, whatever the height turns out to be. */
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  padding: var(--space-16) var(--space-32);
+  font-family: inherit;
+  font-size: var(--text-button-size);
+  font-weight: var(--text-button-weight);
+  line-height: 1.2;
+  cursor: pointer;
+
+  /* The only animation in the app — design.md §6 allows the reference's press
+     feedback and nothing else. */
+  transition: transform var(--press-duration) ease-out,
+    background-color var(--press-duration) ease-out;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  /* Dimmed, not greyed to a different hue: the button is the same button, it
+     is simply not available yet. */
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.button--primary {
+  background: var(--action);
+  color: var(--canvas);
+}
+
+.button--secondary {
+  background: transparent;
+  color: var(--action);
+  border-color: var(--separator);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+
+  .button:active:not(:disabled) {
+    transform: none;
+  }
+}

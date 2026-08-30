@@ -1,0 +1,80 @@
+/*
+ * The one screen that is not a dashboard: a single panel, centred, with nothing
+ * else on the page competing for attention.
+ */
+
+.auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-32);
+  /* The canvas panel needs something to sit on to read as a surface. */
+  background: var(--parchment);
+}
+
+.auth__panel {
+  width: 100%;
+  max-width: 420px;
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  /* Raised, not resting: this is the only object on the page. Rows in a list
+     get hairlines instead — fifty shadows is noise, one is a focal point. */
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-48) var(--space-32);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+.auth__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.auth__form,
+.auth__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+.auth__fields {
+  /* A fieldset carries a border and padding by default; it is here for the
+     disabled behaviour, not for its appearance. */
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.auth__switch {
+  text-align: center;
+}
+
+/* A link, not a second button: design.md §5 allows one primary per screen, and
+   switching modes is not what the user came here to do. */
+.auth__link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--action);
+  cursor: pointer;
+}
+
+.auth__link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.auth__link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+  border-radius: var(--space-4);
+}
+
+.auth__link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

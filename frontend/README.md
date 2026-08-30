@@ -65,11 +65,14 @@ src/
     endpoints.ts One function per endpoint, so no screen writes a URL
   format/
     money.ts     Amounts, always rendered at scale 2
+  components/    Button, TextField, Notice — the three patterns, nothing more
+  screens/
+    auth/        Sign in and create account, in one screen with two modes
   styles/
     tokens.css   Every color, size, space, radius, and shadow in the app
     base.css     Reset, page defaults, the type roles from design.md §3
   main.tsx       Entry point; loads the font and both stylesheets
-  App.tsx        Temporary foundation check — deleted in chunk 1.3
+  App.tsx        Temporary preview host — becomes the real wiring in chunk 1.4
 ```
 
 Tests sit beside what they test, as `*.test.ts`.
