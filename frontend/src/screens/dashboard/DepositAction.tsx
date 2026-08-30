@@ -13,13 +13,24 @@ import './deposit-action.css'
 
 interface DepositActionProps {
   accountId: Uuid
+  /**
+   * Whether the amount field is showing. Controlled by the balance panel rather
+   * than held here, because the panel needs to know: while money is being added
+   * it hides the button that would navigate away mid-form.
+   */
+  open: boolean
+  onOpenChange: (open: boolean) => void
   /** Called after money has actually moved, so the screen can reload the
    *  balance and remount the list. */
   onDeposited: () => void
 }
 
-export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
-  const [open, setOpen] = useState(false)
+export function DepositAction({
+  accountId,
+  open,
+  onOpenChange,
+  onDeposited,
+}: DepositActionProps) {
   const [amount, setAmount] = useState('')
   const [fieldError, setFieldError] = useState<string | undefined>(undefined)
   const [error, setError] = useState<ApiError | null>(null)
@@ -40,7 +51,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
   const [attemptKey, setAttemptKey] = useState<string | null>(null)
 
   function reset() {
-    setOpen(false)
+    onOpenChange(false)
     setAmount('')
     setFieldError(undefined)
     setError(null)
@@ -110,7 +121,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
           variant="secondary"
           onClick={() => {
             setAdded(null)
-            setOpen(true)
+            onOpenChange(true)
           }}
         >
           Add money

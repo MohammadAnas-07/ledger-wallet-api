@@ -1,20 +1,23 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import { AuthScreen } from './screens/auth/AuthScreen'
 import { DashboardScreen } from './screens/dashboard/DashboardScreen'
+import { TransferScreen } from './screens/transfer/TransferScreen'
 
 /**
- * Which screen the session allows.
+ * What the session allows, and where the address bar points.
  *
- * This is the protected route, and it is a condition rather than a router
- * because there is exactly one authenticated screen so far. Routing between the
- * dashboard, the transfer form, and the history is a Feature 2 problem, and
- * picking a router now would be choosing it against three screens that do not
- * exist yet.
+ * The protection is still a condition rather than a table of guarded routes,
+ * and that is deliberate: being signed out is not a redirect here, it is a
+ * different application. No route is reachable without a session because when
+ * there is no session, none of them are rendered at all.
  *
- * What matters is the shape: an unauthenticated screen is not reachable from
- * here, and the signed-in one is not rendered until the session is confirmed —
- * not merely until a token is present.
+ * Which also means a deep link survives signing in, for free. Open /transfer
+ * with an expired token and you are asked to sign in *at* /transfer; when you
+ * do, the transfer screen is what appears. No redirect dance, and no returnTo
+ * parameter to carry around and get wrong.
  */
 function Session() {
   const { status, signIn, register } = useAuth()
@@ -30,13 +33,23 @@ function Session() {
     return <AuthScreen onLogin={signIn} onRegister={register} />
   }
 
-  return <DashboardScreen />
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardScreen />} />
+      <Route path="/transfer" element={<TransferScreen />} />
+      {/* Anything else is a typo or a stale link. The dashboard is the one
+          screen that is always meaningful, so that is where they land. */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Session />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <Session />
+      </AuthProvider>
+    </BrowserRouter>
   )
 }

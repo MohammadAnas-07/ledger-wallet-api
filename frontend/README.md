@@ -4,8 +4,10 @@ The Stage 2 UI. Four screens against the Stage 1 backend, built to
 [design.md](../design.md); the chunk-by-chunk plan is in
 [phases.md](../phases.md#stage-2-frontend--in-progress).
 
-React 19 + Vite + TypeScript. No UI library and no component framework —
-design.md §6 rules one out, and three patterns cover four screens.
+React 19 + Vite + TypeScript, with react-router. No UI library and no component
+framework — design.md §6 rules one out, and three patterns cover four screens.
+A router is a different thing: it buys real URLs, so /transfer survives a
+refresh and the back button works.
 
 ## Running it
 
@@ -75,6 +77,7 @@ src/
   screens/
     auth/        Sign in and create account, in one screen with two modes
     dashboard/   Balance hero, and the wallets behind it
+    transfer/    Sending money to another account
   styles/
     tokens.css   Every color, size, space, radius, and shadow in the app
     base.css     Reset, page defaults, the type roles from design.md §3
@@ -86,6 +89,17 @@ Tests sit beside what they test, as `*.test.ts`, and are type-checked by their
 own `tsconfig.test.json`. That split is not tidiness: the MONEY_FIELDS guard
 reads `types.ts` off disk, so tests need Node types, and app code must not be
 able to reach `fs` or `process`.
+
+## Routes
+
+`/` is the dashboard and `/transfer` sends money; anything else redirects to the
+dashboard. Signing out is not a redirect — with no session none of the routes
+are rendered at all, which is also why a deep link survives signing in: open
+/transfer with an expired token and you sign in *at* /transfer.
+
+Serving a production build needs the host to answer unknown paths with
+`index.html`, or a refresh on /transfer becomes a 404 from the server. The dev
+server and `npm run preview` already do.
 
 **No component hardcodes a design value.** A hex code, font size, or pixel
 spacing outside `tokens.css` is a bug: it is a value that cannot be corrected

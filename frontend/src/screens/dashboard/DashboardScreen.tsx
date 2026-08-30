@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { Link } from 'react-router'
 
 import { createAccount, listAccounts } from '../../api/endpoints'
 import { ApiError, userMessage } from '../../api/errors'
@@ -179,6 +180,14 @@ function BalancePanel({
   stale: boolean
   onDeposited: () => void
 }) {
+  /*
+   * Held here rather than inside DepositAction because it decides what its
+   * neighbour does: while an amount is half-typed, the link that would leave
+   * the screen is taken away instead of sitting next to the form inviting the
+   * click that discards it.
+   */
+  const [depositing, setDepositing] = useState(false)
+
   return (
     <section className="balance" aria-busy={stale || undefined}>
       <p className="caption">Balance</p>
@@ -193,13 +202,27 @@ function BalancePanel({
           This wallet is {account.status.toLowerCase()}.
         </p>
       )}
-      {/* Keyed by the account so switching wallets closes a half-filled form
-          rather than carrying an amount across to a different balance. */}
-      <DepositAction
-        key={account.id}
-        accountId={account.id}
-        onDeposited={onDeposited}
-      />
+      <div className="balance__actions">
+        {/*
+          * The one primary action on the screen, and the right one: moving
+          * money is what a wallet is for. It is a link because it goes
+          * somewhere — nothing is submitted by pressing it.
+          */}
+        {!depositing && (
+          <Link className="button button--primary" to="/transfer">
+            Send money
+          </Link>
+        )}
+        {/* Keyed by the account so switching wallets closes a half-filled form
+            rather than carrying an amount across to a different balance. */}
+        <DepositAction
+          key={account.id}
+          accountId={account.id}
+          open={depositing}
+          onOpenChange={setDepositing}
+          onDeposited={onDeposited}
+        />
+      </div>
     </section>
   )
 }

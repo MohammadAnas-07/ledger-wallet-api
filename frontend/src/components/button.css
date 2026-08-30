@@ -52,3 +52,11 @@
     transform: none;
   }
 }
+
+/* A link that acts as a button gets the button's shape. Used where navigating
+   is the action — "Send money" goes to a screen, it does not submit anything. */
+a.button {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
