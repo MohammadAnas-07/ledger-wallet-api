@@ -318,7 +318,7 @@ that feature starts.
 
 | # | Feature | Branch | Chunks | Status |
 |---|---|---|---|---|
-| 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | 🔨 In progress |
+| 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | ✅ Merged 2026-08-30 |
 | 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | ~3 | Not started |
 | 3 | Transfer form | `feature/frontend-transfer` | ~3 | Not started |
 | 4 | Transaction history | `feature/frontend-history` | ~3 | Not started |
