@@ -107,4 +107,14 @@ p {
 .app-checking {
   min-height: 100vh;
   background: var(--parchment);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Only rendered once the wait stops being instant (App.tsx). Subtle, because it
+   is an explanation for an unusual delay, not an announcement. */
+.app-checking__note {
+  color: var(--ink-subtle);
 }
