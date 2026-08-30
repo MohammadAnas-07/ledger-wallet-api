@@ -319,7 +319,7 @@ that feature starts.
 | # | Feature | Branch | Chunks | Status |
 |---|---|---|---|---|
 | 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | ✅ Merged 2026-08-30 |
-| 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | ~3 | Not started |
+| 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | 6 | ✅ Merged 2026-08-30 |
 | 3 | Transfer form | `feature/frontend-transfer` | ~3 | Not started |
 | 4 | Transaction history | `feature/frontend-history` | ~3 | Not started |
 
@@ -333,6 +333,13 @@ money-carrying responses are actually read — `AccountResponse.balance`,
 when a money field exists in the types and is missing from that list. Until then the list
 is guarded by a comment, and a comment is not a test: a new money field left out of it
 compiles, passes, and silently arrives as a rounded double.
+
+**Carried into Feature 3.** Withdraw stays excluded — reconfirmed 2026-08-30, after
+the dashboard was run by hand. That leaves `422 INSUFFICIENT_FUNDS` with exactly one
+place it can ever be seen: the transfer form. design.md §4 already assumed the transfer
+form would exercise that path; with no withdraw screen, the assumption is now
+load-bearing rather than convenient, so Feature 3 has to cover it deliberately. The copy
+for it is written and unused until then.
 
 #### Feature 1 — chunks
 
