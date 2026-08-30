@@ -73,11 +73,11 @@ src/
     money.ts     Amounts, always rendered at scale 2
     datetime.ts  Timestamps, 24-hour, in the viewer time zone
   auth/          The session: provider, context, useAuth
-  components/    Button, TextField, Notice, AppHeader
+  components/    Button, TextField, SelectField, Notice, AppHeader
   screens/
     auth/        Sign in and create account, in one screen with two modes
     dashboard/   Balance hero, and the wallets behind it
-    transfer/    Sending money to another account
+    transfer/    Sending money — and working out who can be sent to
   styles/
     tokens.css   Every color, size, space, radius, and shadow in the app
     base.css     Reset, page defaults, the type roles from design.md §3

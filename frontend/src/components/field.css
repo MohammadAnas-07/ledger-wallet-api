@@ -60,3 +60,46 @@
     transition: none;
   }
 }
+
+/* ---- Select ------------------------------------------------------------- */
+
+/*
+ * Same surface as the input: parchment, no border at rest, an action ring on
+ * focus. A native select, deliberately — it is keyboard-navigable, it is
+ * searchable by typing, and on a phone it opens the platform picker. A
+ * hand-built listbox would have to earn all three back.
+ */
+.field__select {
+  background: var(--parchment);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-body-size);
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  padding: var(--space-16);
+  width: 100%;
+  cursor: pointer;
+
+  transition: border-color var(--press-duration) ease-out;
+}
+
+.field__select:focus {
+  outline: none;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px rgb(0 102 204 / 0.15);
+}
+
+.field__select--invalid {
+  border-color: var(--error);
+}
+
+.field__select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field__select {
+    transition: none;
+  }
+}
