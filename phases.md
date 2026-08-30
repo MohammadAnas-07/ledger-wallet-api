@@ -320,7 +320,7 @@ that feature starts.
 |---|---|---|---|---|
 | 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | ✅ Merged 2026-08-30 |
 | 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | 6 | ✅ Merged 2026-08-30 |
-| 3 | Transfer form | `feature/frontend-transfer` | ~3 | Not started |
+| 3 | Transfer form | `feature/frontend-transfer` | 3 | ✅ Merged 2026-08-30 |
 | 4 | Transaction history | `feature/frontend-history` | ~3 | Not started |
 
 Feature 1 carries the foundation — tokens, API client, auth — because every later feature
@@ -334,12 +334,11 @@ when a money field exists in the types and is missing from that list. Until then
 is guarded by a comment, and a comment is not a test: a new money field left out of it
 compiles, passes, and silently arrives as a rounded double.
 
-**Carried into Feature 3.** Withdraw stays excluded — reconfirmed 2026-08-30, after
-the dashboard was run by hand. That leaves `422 INSUFFICIENT_FUNDS` with exactly one
-place it can ever be seen: the transfer form. design.md §4 already assumed the transfer
-form would exercise that path; with no withdraw screen, the assumption is now
-load-bearing rather than convenient, so Feature 3 has to cover it deliberately. The copy
-for it is written and unused until then.
+**Carried into Feature 3 — done.** Withdraw stays excluded, reconfirmed 2026-08-30
+after the dashboard was run by hand, which left `422 INSUFFICIENT_FUNDS` with exactly one
+place it could ever be seen: the transfer form. That made design.md §4's assumption
+load-bearing rather than convenient. Feature 3 covered it: sending from an empty wallet
+returns 422 and the form says so with everything typed still in it.
 
 #### Feature 1 — chunks
 
