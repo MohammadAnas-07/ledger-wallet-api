@@ -63,19 +63,69 @@ export function HistoryScreen() {
     }
   }, [account, requested, params, setParams])
 
+  const page = readPage(params)
+
   const statement = useResource(
     useCallback(
       () =>
         account === null
           ? Promise.resolve(null)
-          : getStatement(account.id, { page: 0, size: PAGE_SIZE }),
-      [account],
+          : getStatement(account.id, { page, size: PAGE_SIZE }),
+      [account, page],
     ),
-    [account?.id],
+    [account?.id, page],
   )
 
   const rows = statement.data?.content ?? []
   const loading = accounts.loading || statement.loading
+  const totalPages = statement.data?.totalPages ?? 0
+  const totalEntries = statement.data?.totalElements ?? 0
+
+  useEffect(() => {
+    /*
+     * One rule for the page parameter: the address bar says the page that is
+     * actually showing, or says nothing.
+     *
+     * Two things break that. A number past the end — from a link written when
+     * there was more history — shows an empty list on a wallet that has
+     * transactions, which reads as "nothing here" rather than "you have gone
+     * too far". And anything that is not a page number at all falls back to the
+     * first page while `?page=abc` sits in the URL claiming otherwise.
+     *
+     * Replaced rather than pushed: this is a correction, and going back should
+     * not land on the value that was just corrected away.
+     */
+    const clamped =
+      totalPages > 0 ? Math.min(page, totalPages - 1) : page
+    const canonical = clamped === 0 ? null : String(clamped)
+
+    if (params.get('page') !== canonical) {
+      const next = new URLSearchParams(params)
+      if (canonical === null) {
+        next.delete('page')
+      } else {
+        next.set('page', canonical)
+      }
+      setParams(next, { replace: true })
+    }
+  }, [page, totalPages, params, setParams])
+
+  function goToPage(next: number) {
+    const updated = new URLSearchParams(params)
+    // Page zero is the default, so it stays out of the URL rather than
+    // sitting there as ?page=0 on every link anyone copies.
+    if (next === 0) {
+      updated.delete('page')
+    } else {
+      updated.set('page', String(next))
+    }
+    // Pushed, not replaced: paging is navigation, and the back button should
+    // walk back through the pages actually read.
+    setParams(updated)
+    // A new page starts at its own top. Without this, pressing Next at the
+    // bottom of one page leaves the reader at the bottom of the next.
+    window.scrollTo({ top: 0 })
+  }
 
   return (
     <div className="history">
@@ -134,7 +184,18 @@ export function HistoryScreen() {
                 </p>
               )}
 
-              {rows.length > 0 && <TransactionList entries={rows} />}
+              {rows.length > 0 && (
+                <>
+                  <TransactionList entries={rows} />
+                  <Pager
+                    page={page}
+                    totalPages={totalPages}
+                    totalEntries={totalEntries}
+                    busy={statement.refreshing}
+                    onGo={goToPage}
+                  />
+                </>
+              )}
             </>
           )}
 
@@ -145,4 +206,63 @@ export function HistoryScreen() {
       </div>
     </div>
   )
+}
+
+/**
+ * Which page, out of how many, and how much there is in total.
+ *
+ * The count is the part that earns its place: "20 of 26" tells a reader whether
+ * they are looking at a month or at everything, which a bare Next button never
+ * does.
+ */
+function Pager({
+  page,
+  totalPages,
+  totalEntries,
+  busy,
+  onGo,
+}: {
+  page: number
+  totalPages: number
+  totalEntries: number
+  busy: boolean
+  onGo: (page: number) => void
+}) {
+  // One page is not a sequence. The count still belongs, but nothing to press.
+  const paged = totalPages > 1
+
+  return (
+    <div className="pager">
+      <p className="caption pager__count">
+        {totalEntries} transaction{totalEntries === 1 ? '' : 's'}
+        {paged && ` · page ${page + 1} of ${totalPages}`}
+      </p>
+
+      {paged && (
+        <div className="pager__controls">
+          <Button
+            variant="secondary"
+            disabled={page === 0 || busy}
+            onClick={() => onGo(page - 1)}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={page >= totalPages - 1 || busy}
+            onClick={() => onGo(page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The page from the URL, ignoring anything that is not a page number. A
+ *  hand-edited `?page=abc` should show the first page, not crash. */
+function readPage(params: URLSearchParams): number {
+  const raw = Number(params.get('page'))
+  return Number.isInteger(raw) && raw >= 0 ? raw : 0
 }

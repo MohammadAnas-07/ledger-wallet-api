@@ -63,3 +63,25 @@
 .history__back a:hover {
   text-decoration: underline;
 }
+
+/* ---- Pager -------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-24);
+  flex-wrap: wrap;
+  /* Outside the panel, aligned with the heading above it: the count describes
+     the list rather than belonging to it. */
+  padding: 0 var(--space-32);
+}
+
+.pager__count {
+  margin: 0;
+}
+
+.pager__controls {
+  display: flex;
+  gap: var(--space-8);
+}
