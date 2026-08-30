@@ -101,3 +101,10 @@ p {
 .amount--debit {
   color: var(--ink);
 }
+
+/* The gap while a stored token is verified. It holds the page's ground colour
+   so the app does not flash white before the sign-in panel's parchment. */
+.app-checking {
+  min-height: 100vh;
+  background: var(--parchment);
+}
