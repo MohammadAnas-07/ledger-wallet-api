@@ -4,6 +4,7 @@ import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import { AuthScreen } from './screens/auth/AuthScreen'
 import { DashboardScreen } from './screens/dashboard/DashboardScreen'
+import { HistoryScreen } from './screens/history/HistoryScreen'
 import { TransferScreen } from './screens/transfer/TransferScreen'
 
 /**
@@ -37,6 +38,7 @@ function Session() {
     <Routes>
       <Route path="/" element={<DashboardScreen />} />
       <Route path="/transfer" element={<TransferScreen />} />
+      <Route path="/history" element={<HistoryScreen />} />
       {/* Anything else is a typo or a stale link. The dashboard is the one
           screen that is always meaningful, so that is where they land. */}
       <Route path="*" element={<Navigate to="/" replace />} />

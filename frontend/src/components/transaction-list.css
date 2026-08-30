@@ -1,0 +1,42 @@
+/*
+ * A list, not a stack of cards.
+ *
+ * design.md §5: the card pattern survives here, its elevation does not. Fifty
+ * shadowed rows is visual noise; one panel with hairlines between rows reads as
+ * a ledger, which is what it is.
+ */
+
+.txns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-resting);
+}
+
+.txns__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-24);
+  padding: var(--space-16) var(--space-32);
+}
+
+.txns__row + .txns__row {
+  /* No hairline above the first row: the panel edge is already a boundary. */
+  border-top: 1px solid var(--separator);
+}
+
+.txns__what {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* Let the description shrink before the amount does — a truncated account
+     number is survivable, a truncated figure is not. */
+  min-width: 0;
+}
+
+.txns__placeholder {
+  color: var(--separator);
+}
