@@ -423,9 +423,18 @@ on this machine. The frontend job's four steps pass. The backend job is slower h
 will be on a runner — Docker Desktop has under 4 GB and the compose stack is using some of
 it, where `ubuntu-latest` has 16 GB — so a local timing problem there says nothing about CI.
 
-**Not proven until it runs on GitHub.** A workflow file that parses and whose commands pass
-locally is not a workflow that has run. The first push to `main` is what actually tests it,
-and the badge in [README.md](README.md) is where the answer shows up.
+**Proven on GitHub, 2026-08-30.** A workflow file that parses and whose commands pass
+locally is not a workflow that has run, so the first pull request against `main` was the
+real test: both jobs green, including the backend's integration tests.
+
+That answered a question the local run could not. Here, `mvn verify` fails at
+`Testcontainers` starting Kafka — `Wait strategy failed. Container exited with code 126`.
+126 is "found but not executable", not memory: PostgreSQL starts in the same run, the Kafka
+image runs when started by hand, and nothing is OOM-killed. It is a Windows file-permission
+problem with the script `ConfluentKafkaContainer` copies into the container — the same
+class of thing as `mvnw` losing its executable bit — and the runner shows it does not
+happen on Linux. Worth knowing before anyone spends an evening on it: a red build here does
+not mean a red build in CI.
 
 ---
 
