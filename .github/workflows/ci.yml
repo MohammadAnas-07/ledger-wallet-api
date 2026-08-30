@@ -1,0 +1,97 @@
+# Two jobs, run against every push and every pull request touching main.
+#
+# They are independent and run in parallel: the backend does not need the
+# frontend built, and the frontend never talks to a real backend in CI. Neither
+# is filtered by path — a job that skips itself reports green without having
+# run, and on a repository this size the minutes saved are not worth a build
+# status that can lie.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch cancels the first. The older run's answer is
+# about code nobody is looking at any more.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — mvn verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          # Matches <java.version> in pom.xml. Temurin is the distribution the
+          # Docker image builds on, so CI and the container agree.
+          java-version: '21'
+          distribution: temurin
+          # Keyed on pom.xml, so a dependency change invalidates it by itself.
+          cache: maven
+
+      # `verify` runs both: surefire for *Test, failsafe for *IT. The
+      # integration tests bring up PostgreSQL and Kafka through Testcontainers,
+      # which needs a Docker daemon — the runner has one, and nothing here has
+      # to start it.
+      #
+      # The wrapper rather than the runner's own Maven: the version is pinned in
+      # .mvn/wrapper, so an image update cannot change how this builds without a
+      # commit saying so.
+      - name: Build and test
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+
+      # Only on failure, and only then worth the upload. 180 tests produce a
+      # long log; the reports say which one broke and what it expected.
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend — build, lint, test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          # Matches the version this was developed against.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `ci` rather than `install`: it installs exactly the lockfile and fails
+      # if package.json and the lockfile disagree, which is the difference
+      # between a build that reproduces and one that drifts.
+      - name: Install
+        run: npm ci
+
+      # Type-checks before it bundles — `build` is `tsc -b && vite build`, so a
+      # type error fails here rather than reaching a screen.
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test

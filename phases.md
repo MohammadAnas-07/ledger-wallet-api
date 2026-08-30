@@ -394,6 +394,41 @@ animation beyond the reference's press feedback.
 
 ---
 
+## Continuous Integration
+
+Added 2026-08-30 on `feature/ci-pipeline`, after both stages were complete. It belongs to
+neither stage: it runs what the stages already built, and it exists so that "the tests
+pass" stops depending on someone remembering to run them.
+
+`.github/workflows/ci.yml` — two jobs, on every push and every pull request against `main`.
+
+| Job | Runs |
+|---|---|
+| **Backend** | `./mvnw clean verify` — 95 unit tests through surefire, then the integration tests through failsafe, which bring up PostgreSQL and Kafka via Testcontainers against the runner's own Docker daemon |
+| **Frontend** | `npm ci`, `npm run build`, `npm run lint`, `npm test` in `frontend/` — 65 tests |
+
+**Decisions taken before writing it — 2026-08-30**
+
+| Decision | Choice | Why |
+|---|---|---|
+| **Maven wrapper** | Added: `mvnw`, `mvnw.cmd`, `.mvn/wrapper/`, pinned to 3.9.16 | There was none, so CI would have used whatever Maven the runner image happened to ship. That version changes without a commit, and a build that breaks for that reason leaves no trace in the history to explain itself. `only-script`, so no jar enters the repository. |
+| **Dependency caching** | On for both — `cache: maven`, `cache: npm` | Keyed on `pom.xml` and `package-lock.json`, so a dependency change invalidates it without anyone deciding to. Testcontainers images are not cached and are pulled every run regardless. |
+| **Test reports** | Uploaded as an artifact, on failure only | There are 180 backend tests; when one breaks in CI, the surefire and failsafe reports say which and what it expected, where the job log says it somewhere in several thousand lines. Nothing is uploaded on a green run. |
+| **Java / Node** | 21 and 24 | 21 matches `<java.version>` in the pom and the Docker image's base; 24 matches the machine this was developed on. |
+| **Path filters** | None — both jobs run on every change | A job that skips itself still reports green. On a repository this size the minutes saved are not worth a build status that can be true and meaningless at the same time. |
+| **Concurrency** | A newer push cancels the older run on the same ref | The older run is answering a question about code nobody is looking at any more. |
+
+**Verified locally before the first push**: every command the workflow runs was run by hand
+on this machine. The frontend job's four steps pass. The backend job is slower here than it
+will be on a runner — Docker Desktop has under 4 GB and the compose stack is using some of
+it, where `ubuntu-latest` has 16 GB — so a local timing problem there says nothing about CI.
+
+**Not proven until it runs on GitHub.** A workflow file that parses and whose commands pass
+locally is not a workflow that has run. The first push to `main` is what actually tests it,
+and the badge in [README.md](README.md) is where the answer shows up.
+
+---
+
 ### Parking Lot
 
 Work that surfaced at the wrong moment. Written down, not acted on.
