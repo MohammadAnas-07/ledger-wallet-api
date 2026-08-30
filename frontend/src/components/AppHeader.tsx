@@ -1,3 +1,5 @@
+import { Link } from 'react-router'
+
 import { useAuth } from '../auth/useAuth'
 
 import './app-header.css'
@@ -15,7 +17,11 @@ export function AppHeader() {
 
   return (
     <header className="app-header">
-      <p className="app-header__mark body">Wallet</p>
+      {/* The mark is the way back. Every screen has a header, so every screen
+          has a way home without inventing one of its own. */}
+      <Link className="app-header__mark body" to="/">
+        Wallet
+      </Link>
       <div className="app-header__account">
         <span className="caption">{user?.fullName}</span>
         <button type="button" className="app-header__signout" onClick={signOut}>

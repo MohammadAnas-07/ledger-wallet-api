@@ -1,23 +1,26 @@
-import type { InputHTMLAttributes } from 'react'
+import type { ReactNode, SelectHTMLAttributes } from 'react'
 import { useId } from 'react'
 
 import './field.css'
 
-interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {
+interface SelectFieldProps
+  extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'id'> {
   label: string
   /** Shown under the field, in error ink. Its presence is what marks the field
    *  invalid — there is no separate flag to keep in step with it. */
   error?: string
-  /** Shown under the field when there is no error. Rules the user should know
-   *  before they trip over them, not after. */
   hint?: string
+  children: ReactNode
 }
 
-/**
- * The `search-input` pattern from design.md §5, doing form duty: parchment
- * fill, no border at rest, an action-coloured ring on focus.
- */
-export function TextField({ label, error, hint, ...rest }: TextFieldProps) {
+/** The input's twin, wearing the same surface. */
+export function SelectField({
+  label,
+  error,
+  hint,
+  children,
+  ...rest
+}: SelectFieldProps) {
   const id = useId()
   const messageId = `${id}-message`
   const invalid = error !== undefined
@@ -27,17 +30,17 @@ export function TextField({ label, error, hint, ...rest }: TextFieldProps) {
       <label className="field__label caption" htmlFor={id}>
         {label}
       </label>
-      <input
+      <select
         {...rest}
         id={id}
-        className={`field__input body${invalid ? ' field__input--invalid' : ''}`}
+        className={`field__select${invalid ? ' field__select--invalid' : ''}`}
         aria-invalid={invalid || undefined}
-        // Points at whichever of the two is actually rendered, so the message
-        // is read out with the field instead of being stranded next to it.
         aria-describedby={
           error !== undefined || hint !== undefined ? messageId : undefined
         }
-      />
+      >
+        {children}
+      </select>
       {error !== undefined && (
         <p className="field__error caption" id={messageId} role="alert">
           {error}

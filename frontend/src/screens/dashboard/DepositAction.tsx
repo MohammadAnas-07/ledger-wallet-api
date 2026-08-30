@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { deposit, newIdempotencyKey } from '../../api/endpoints'
@@ -13,18 +13,32 @@ import './deposit-action.css'
 
 interface DepositActionProps {
   accountId: Uuid
+  /**
+   * Whether the amount field is showing. Controlled by the balance panel rather
+   * than held here, because the panel needs to know: while money is being added
+   * it hides the button that would navigate away mid-form.
+   */
+  open: boolean
+  onOpenChange: (open: boolean) => void
   /** Called after money has actually moved, so the screen can reload the
    *  balance and remount the list. */
   onDeposited: () => void
 }
 
-export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
-  const [open, setOpen] = useState(false)
+export function DepositAction({
+  accountId,
+  open,
+  onOpenChange,
+  onDeposited,
+}: DepositActionProps) {
   const [amount, setAmount] = useState('')
   const [fieldError, setFieldError] = useState<string | undefined>(undefined)
   const [error, setError] = useState<ApiError | null>(null)
   const [added, setAdded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  /** The synchronous half of the in-flight guard — see submit(). */
+  const inFlight = useRef(false)
 
   /*
    * The key for the deposit currently being attempted.
@@ -40,7 +54,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
   const [attemptKey, setAttemptKey] = useState<string | null>(null)
 
   function reset() {
-    setOpen(false)
+    onOpenChange(false)
     setAmount('')
     setFieldError(undefined)
     setError(null)
@@ -57,6 +71,20 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    /*
+     * Synchronous, because `busy` and `attemptKey` are not.
+     *
+     * Both are React state, read from a closure that every submit in one tick
+     * shares — so a burst before the first re-render sees busy false and no key,
+     * mints a key each, and asks the backend for that many separate movements
+     * of money. Holding Enter on a focused form does exactly that; it was found
+     * on the transfer form, where it moved money four times, and this form had
+     * the same shape.
+     */
+    if (inFlight.current) {
+      return
+    }
+
     if (!isValidAmount(amount)) {
       setFieldError(
         amount.trim() === ''
@@ -69,6 +97,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
     const key = attemptKey ?? newIdempotencyKey()
     setAttemptKey(key)
 
+    inFlight.current = true
     setBusy(true)
     setError(null)
     try {
@@ -95,6 +124,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
         setError(failure)
       }
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
@@ -110,7 +140,7 @@ export function DepositAction({ accountId, onDeposited }: DepositActionProps) {
           variant="secondary"
           onClick={() => {
             setAdded(null)
-            setOpen(true)
+            onOpenChange(true)
           }}
         >
           Add money

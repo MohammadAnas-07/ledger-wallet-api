@@ -138,3 +138,19 @@
 .dashboard__add {
   margin: 0;
 }
+
+/* Send money beside Add money. While the deposit form is open the first is
+   removed, so the row never becomes a form with an escape hatch next to it. */
+.balance__actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  margin-top: var(--space-16);
+}
+
+/* The deposit block already spaces itself when it stands alone; inside the row
+   the row does that job. */
+.balance__actions .deposit {
+  margin-top: 0;
+}

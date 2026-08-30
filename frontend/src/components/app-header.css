@@ -37,3 +37,13 @@
   outline-offset: 2px;
   border-radius: var(--space-4);
 }
+
+/* The mark is a link, and looks like the text it was before it became one. */
+.app-header__mark {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.app-header__mark:hover {
+  text-decoration: underline;
+}
