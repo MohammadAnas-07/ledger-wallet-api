@@ -268,36 +268,87 @@ deliberately does not use, and two error codes the application never emits.
 
 ---
 
-## Stage 2: Frontend — Later, Separate Effort
+## Stage 2: Frontend — In Progress
+
+**Started 2026-08-30.** The gate below was met on 2026-08-29; it is kept for the record,
+because it is why this section sat empty through all of Stage 1 — not because it still
+binds anything.
 
 > **Frontend kaam Stage 1 complete hone se pehle shuru nahi hoga — koi bhi UI-related task is beech mein aaye to usse Stage 2 mein park karo, abhi mat karo.**
 
-This applies without exception, including to small or "quick" UI requests: a login screen, a single page, a bit of styling, "just to see how it looks." Anything UI-related that surfaces during Stage 1 gets written down in the parking lot below and left there. Backend correctness is the entire point of this project; a half-built UI competing for attention is exactly what would compromise it.
+That rule held for all eight backend phases: no login screen, no page, no styling, nothing
+"just to see how it looks." The parking lot below stayed empty the whole way through, which
+is exactly the outcome it was written for.
 
-**Trigger:** Stage 2 begins **only** when every Stage 1 phase (1–8) is complete, merged, and tested — not when the backend "mostly works."
+### Working agreement — changed for Stage 2
 
-That condition is now met (2026-08-29). Stage 2 is unblocked, not started: nothing in
-this section has been acted on, and `design.md` stays out of context until the work
-actually begins.
+Written up as [rules.md §1.5](rules.md#15-chunks-stop-and-show-never-push-unasked), because it
+is a standing rule now — it governs everything from 2026-08-30 onward, not just the frontend.
+Repeated here because it changes how this roadmap is read.
 
-**When triggered:**
-- `design.md` (Apple-minimalist reference) is loaded **at that point**, not before. It is deliberately not part of the current context.
-- The detailed phase breakdown for Stage 2 gets written then, once the real API contract is settled — planning UI phases against endpoints that may still shift would just be rework.
+Stage 1 ran one phase = one branch = one merge. Stage 2 keeps that branch granularity and
+subdivides the work inside it:
 
-**Planned scope (outline only, not a commitment):**
-- Login screen
-- Account balance / wallet list view
-- Transfer form
-- Transaction history table
+- **One feature = one branch.** Chunks within a feature share that branch. A new branch is
+  for a new feature, never for a new chunk.
+- **One chunk = one small, self-contained piece** — shown and approved before the next one
+  starts.
+- **Commits are unattended; pushes are not.** Commit at the end of a chunk without asking,
+  then stop. Nothing is pushed until explicitly asked for, however small or safe the change
+  looks.
+- **Merges stay a manual call**, as in Stage 1.
+- **Scope questions are asked before code is written**, as in Stage 1.
 
-**Not in Stage 2 either:** anything on the [PRD out-of-scope list](prd.md#4-out-of-scope) — multi-currency, payment gateways, admin panel, notifications.
+### Decisions taken before any code — 2026-08-30
+
+| Decision | Choice | Why |
+|---|---|---|
+| **Stack** | React + Vite + TypeScript, in `frontend/` in this repo | TypeScript mirrors the backend DTO records exactly — UUIDs, fixed-scale amounts, enums, the nullable counterparty — so a contract mismatch is a compile error rather than a runtime surprise on a money screen. No UI library: [design.md §6](design.md#6-non-goals-for-this-phase) rules one out, and three patterns cover four screens. |
+| **Accent strategy** | [design.md §2](design.md#2-color-palette) **Option B** — blue for actions, green for credits | A single blue is more faithful to the reference, but leaves a transaction list scanning as undifferentiated, and the list is the product. Balance hero and debits stay neutral ink; red stays reserved for genuine failure. |
+| **Dev cross-origin** | Vite dev proxy. Backend untouched. | `SecurityConfig` has no CORS configuration at all, so a browser on another origin cannot reach the API. A proxy makes the dev origin same-origin and keeps a complete, tested Stage 1 out of the diff. The real fix is parked below. |
+| **Funding gap** | A deposit action on the Dashboard. No withdraw. | The four planned screens contain no way to put money into an account, so a new user's transfer form is unreachable from a cold start. Recorded as a deliberate addition in [design.md §4](design.md#4-screens-to-design), not a quiet scope creep. |
+| **Token handling** | One access token in `localStorage`; any `401` clears it and returns to login | Tokens last 15 minutes, and there is no refresh endpoint and no revocation — by design. Expiry is therefore routine rather than exceptional, and the UI treats it as a silent logout, not an error to report. |
+| **Reference reconciliation** | Skipped — the Apple reference was still unavailable | [design.md §7](design.md#7-stage-2-opening--what-actually-happened) step 1 could not be done. Reconstructed values stand, marked as such in the token file, so a later correction is one stylesheet edit. |
+
+### Feature breakdown
+
+Four features, four branches. Chunk counts past Feature 1 are estimates, firmed up when
+that feature starts.
+
+| # | Feature | Branch | Chunks | Status |
+|---|---|---|---|---|
+| 1 | Frontend foundation + Auth (Login / Register) | `feature/frontend-auth` | 5 | 🔨 In progress |
+| 2 | Dashboard — balance hero, recent transactions, deposit action | `feature/frontend-dashboard` | ~3 | Not started |
+| 3 | Transfer form | `feature/frontend-transfer` | ~3 | Not started |
+| 4 | Transaction history | `feature/frontend-history` | ~3 | Not started |
+
+Feature 1 carries the foundation — tokens, API client, auth — because every later feature
+depends on all three, and building them inside a screen would bury them there.
+
+#### Feature 1 — chunks
+
+| Chunk | Delivers | Deliberately not in it |
+|---|---|---|
+| **1.0** | Docs: this breakdown, the decisions above, design.md §2 and §4 resolved | Any code at all |
+| **1.1** | Vite scaffold in `frontend/`, Inter, `tokens.css` from design.md §2/§3/§5, blank shell | Screens, API calls |
+| **1.2** | API client: typed contract mirroring the DTOs, bearer injection, `ErrorResponse` code mapping, `401` and `429` handling | Any UI |
+| **1.3** | Login / Register screen UI — including loading, error, and disabled states | Backend wiring; the screen is static |
+| **1.4** | Auth wiring: token storage, register → login, protected route, logout | Dashboard content — placeholder only |
+
+**Not in Stage 2 either:** anything on the [PRD out-of-scope list](prd.md#4-out-of-scope) —
+multi-currency, payment gateways, admin panel, notifications. And from
+[design.md §6](design.md#6-non-goals-for-this-phase): no dark mode, no responsive pass, no
+animation beyond the reference's press feedback.
 
 ---
 
 ### Parking Lot
 
-UI ideas that come up during Stage 1 go here. Written down, not acted on.
+Work that surfaced at the wrong moment. Written down, not acted on.
 
-| Idea | Noted on |
-|---|---|
-| _(empty)_ | |
+| Item | Noted on | Why parked |
+|---|---|---|
+| **CORS configuration on the backend.** `SecurityConfig` never calls `.cors(...)`. The dev proxy hides this, but any deployment serving the frontend from a different origin needs it — with tests, like everything else in Stage 1. | 2026-08-30 | It is a change to completed, merged, tested Stage 1 code, and no part of Stage 2 needs it to run. |
+
+No UI ideas were parked during Stage 1: none came up that were acted on, and none were
+deferred here. The lot did its job by staying empty.

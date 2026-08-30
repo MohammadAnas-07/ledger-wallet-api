@@ -255,7 +255,7 @@ Honest ones, not hypothetical:
 - [Architecture](architecture.md)
 - [Development Rules](rules.md)
 - [Phased Roadmap](phases.md)
-- [Design Brief (future frontend)](design.md)
+- [Design Brief (frontend)](design.md)
 - [Reusable Workflows](memory.md)
 
 ## Contact

@@ -1,9 +1,9 @@
 # Design Brief — Wallet & Ledger API (Frontend)
 
-**Stage:** 2 — **not started.** See [phases.md](phases.md#stage-2-frontend--later-separate-effort).
+**Stage:** 2 — **in progress**, started 2026-08-30. See [phases.md](phases.md#stage-2-frontend--in-progress).
 **Companion documents:** [prd.md](prd.md) · [architecture.md](architecture.md) · [rules.md](rules.md)
 
-> **This document is reference material held for later.** No frontend work begins until every Stage 1 backend phase (1–8) is complete, merged, and tested. Nothing here is a licence to start building.
+> **Stage 1 is complete and merged, so this brief is now live.** It was held out of context until that was true, deliberately. What was *reconstructed* when it was written is still reconstructed — see the note directly below.
 
 ---
 
@@ -16,7 +16,7 @@ The Apple design-system reference was **not available** when this brief was writ
 | **Quoted directly — trustworthy** | Action Blue `#0066cc` · canvas white `#ffffff` · parchment `#f5f5f7` · ink `#1d1d1f` · `button-primary` (pill CTA) · `store-utility-card` · `search-input` · press animation `scale(0.95)` · Inter substitution for SF Pro |
 | **Reconstructed — verify against the real reference** | The full type scale (sizes, weights, tracking) · the spacing scale · border radii · shadow values · muted gray hex values |
 
-**First task when Stage 2 opens:** open the actual reference and reconcile the reconstructed rows. Where they differ, the reference wins — this file gets corrected, not the other way around.
+**That first task, attempted 2026-08-30:** the reference was still unavailable when Stage 2 opened, so nothing could be reconciled. The reconstructed values below stand as written, and carry into the token file with a comment marking them unverified. If the reference turns up later the reference still wins — but by then the correction is an edit to one stylesheet, not to every component, which is the entire reason these values are tokens.
 
 ---
 
@@ -45,20 +45,21 @@ Trimmed to the minimum this app needs. Six values total — new hues are not int
 
 `--ink-muted`, `--ink-subtle`, and `--separator` are reconstructed values — verify against the reference.
 
-### 🔶 Open Decision — Accent Strategy
+### ✅ Decision — Accent Strategy (2026-08-30)
 
-**You need to confirm one of these before Stage 2 begins.**
+**Option B is confirmed.** Two colors, strictly separated jobs.
 
-**Option A — Single blue (strict reference fidelity)**
-`--action: #0066cc` for every interactive element. Credit and debit distinguished by `+`/`−` signs and weight alone, no color at all.
-*Most minimal, most faithful to the reference. Risk: a transaction list scans as undifferentiated at a glance.*
+| Token | Hex | Its only job |
+|---|---|---|
+| `--action` | `#0066cc` | Buttons, links, focus rings, interactive affordances |
+| `--credit` | `#1d8a4e` | Credit amounts, success confirmations |
+| `--error` | `#d70015` | Validation errors, failure states |
 
-**Option B — Blue for actions, green for credits ✅ recommended**
-`--action: #0066cc` — buttons, links, focus rings, interactive affordances only.
-`--credit: #1d8a4e` — credit amounts and success confirmations only.
-*Two colors with strictly separated jobs: blue means "you can do something here," green means "money came in." Neither ever does the other's job.*
+Blue means "you can do something here." Green means "money came in." Neither ever does the other's job.
 
-I recommend **Option B**, with two constraints that matter more than the choice itself:
+*Option A — a single blue everywhere, credit and debit separated by `+`/`−` and weight alone — was rejected. It is the more faithful reading of the reference, but a transaction list scanning as undifferentiated is not an acceptable cost when the list is the product.*
+
+Two constraints ride along with the choice, and they matter more than the choice itself:
 
 1. **The dashboard balance figure stays `--ink`, never green.** A balance is a neutral fact, not good news. Coloring it green makes a wallet read as a gain, and makes a genuinely low balance feel reassuring. Green is reserved for *change* — a credit that just happened.
 2. **Debits are `--ink`, never red.** Red is reserved exclusively for validation errors and failure states. If every ordinary spend is red, the user learns to ignore red, and the one screen where it means "this transfer failed" no longer registers. A debit is normal; it gets a `−` sign and neutral ink.
@@ -69,7 +70,7 @@ I recommend **Option B**, with two constraints that matter more than the choice 
 
 | State | Treatment |
 |---|---|
-| **Credit** (money in) | `+` prefix · `--credit` (Option B) or `--ink` (Option A) · medium weight |
+| **Credit** (money in) | `+` prefix · `--credit` · medium weight |
 | **Debit** (money out) | `−` prefix · `--ink` · medium weight |
 | **Pending** | `--ink-subtle`, italic optional |
 | **Failed** | `--error: #d70015` — reserved for this and form validation only |
@@ -116,7 +117,7 @@ Amounts always render at fixed scale 2 (`1,250.00`, never `1250` or `1250.5`), m
 
 ## 4. Screens to Design
 
-List only. No layouts, no components, no implementation — that work belongs to Stage 2.
+List only. No layouts, no components, no implementation — that work belongs to the Stage 2 build chunks in [phases.md](phases.md#stage-2-frontend--in-progress).
 
 | # | Screen | Purpose | Key API |
 |---|---|---|---|
@@ -125,7 +126,15 @@ List only. No layouts, no components, no implementation — that work belongs to
 | 3 | **Transfer form** | Move money between accounts | `POST /api/v1/transfers` |
 | 4 | **Transaction history** | Full filterable list | `GET /api/v1/accounts/{id}/transactions` |
 
-Four screens. Anything beyond them is out of scope for Stage 2 — see [prd.md §4](prd.md#4-out-of-scope).
+### Addition — deposit action (2026-08-30)
+
+Four screens was the plan, and it had a hole in it: **nothing on that list puts money into an account.** A user registers, creates a wallet, sees `0.00`, and cannot use the transfer form at all — the one screen the whole ledger exists to serve is unreachable from a cold start.
+
+Closed with the smallest thing that closes it: **a deposit action on the Dashboard.** A secondary button and an amount input calling `POST /api/v1/accounts/{id}/deposit`. Not a fifth screen, no route of its own, no entry in the table above.
+
+**Withdraw is deliberately excluded.** It is the same form against a different endpoint, and it demonstrates nothing a transfer does not already demonstrate — including the `422 INSUFFICIENT_FUNDS` path, which the transfer form exercises anyway.
+
+Beyond these, out of scope for Stage 2 — see [prd.md §4](prd.md#4-out-of-scope).
 
 **States each screen must account for** (easy to forget at design time, painful to retrofit): loading, empty (no accounts, no transactions yet), error, and — specific to this app — the **`409` retry state** on the transfer form. That last one is not an error message; it is a "this didn't go through, try again" prompt, and it needs a designed treatment because the backend produces it by design under concurrent load.
 
@@ -176,13 +185,21 @@ Explicitly excluded. Deliberate omissions, not oversights.
 
 ---
 
-## 7. When Stage 2 Opens
+## 7. Stage 2 Opening — What Actually Happened
 
-Order of operations, so the first session doesn't start by guessing:
+Recorded 2026-08-30, against the order of operations this section prescribed.
 
-1. Open the real Apple design reference; reconcile every **reconstructed** value flagged in §0, §2, §3, §5.
-2. **Confirm the accent decision** in §2 — Option A or Option B.
-3. Freeze the API contract against what Phases 1–8 actually shipped (endpoint list in [architecture.md §7](architecture.md#7-api-contract-summary)).
-4. *Then* write the Stage 2 phase breakdown in [phases.md](phases.md), one screen per phase.
+| Step | Outcome |
+|---|---|
+| 1. Reconcile every reconstructed value against the real reference | **Not done — the reference was unavailable.** The reconstructed values stand. See §0. |
+| 2. Confirm the accent decision | **Done — Option B.** See §2. |
+| 3. Freeze the API contract against what Phases 1–8 shipped | **Done**, read from the controllers and DTOs rather than from documentation. Three consequences below. |
+| 4. Write the Stage 2 phase breakdown | **Done** — [phases.md](phases.md#stage-2-frontend--in-progress). One feature per branch, not one screen per phase. |
 
-Steps 1–3 are inputs to step 4. Writing UI phases before them is the rework this document exists to prevent.
+### What the contract freeze turned up
+
+Three things the UI has to be built around, none of them obvious from the screen list:
+
+- **Register does not return a token.** `POST /api/v1/auth/register` answers `201` with a `UserResponse`; only `/login` issues one. A registration flow is therefore two calls, and the second can fail on its own — which is a state the Login/Register screen has to have a designed answer for.
+- **The backend has no CORS configuration.** `SecurityConfig` never calls `.cors(...)`, so a browser on a different origin cannot reach it at all. Development goes through a Vite proxy; the backend change is parked in [phases.md](phases.md#parking-lot) rather than made here, because Stage 1 is complete and tested and does not need reopening to build a UI.
+- **The API never discloses another party's balance.** `TransferResponse` carries `fromBalanceAfter` only, and `TransactionDetailResponse` omits `balanceAfter` on both entries by design. There is no "recipient's balance after" to show — do not design a slot for one.
