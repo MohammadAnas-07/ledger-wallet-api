@@ -100,6 +100,24 @@ export function DashboardScreen() {
                   onSelect={setSelectedId}
                 />
               )}
+              {/*
+                * Secondary, and deliberately last on the page. Owning a second
+                * wallet is a real thing this app supports — the switcher above
+                * exists for it — and before this there was no way to reach it
+                * except the empty state, which you only see once. It stays
+                * secondary because the primary action on a wallet is moving
+                * money, not acquiring somewhere to put it.
+                */}
+              <p className="dashboard__add">
+                <Button
+                  variant="secondary"
+                  busy={creating}
+                  busyLabel="Creating…"
+                  onClick={createWallet}
+                >
+                  Add wallet
+                </Button>
+              </p>
             </>
           )}
         </main>

@@ -131,3 +131,10 @@
     transition: none;
   }
 }
+
+/* The one action that is about the account list rather than the money in it.
+   Left-aligned with the panels above rather than centred: it is a footnote to
+   them, not a call to action of its own. */
+.dashboard__add {
+  margin: 0;
+}
