@@ -1,0 +1,39 @@
+.app-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-24) 0;
+}
+
+.app-header__mark {
+  font-weight: var(--text-button-weight);
+}
+
+.app-header__account {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-16);
+}
+
+/* Same treatment as the mode switch on the auth screen: an affordance in
+   action blue, carrying none of a button's weight. */
+.app-header__signout {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--text-caption-size);
+  color: var(--action);
+  cursor: pointer;
+}
+
+.app-header__signout:hover {
+  text-decoration: underline;
+}
+
+.app-header__signout:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+  border-radius: var(--space-4);
+}

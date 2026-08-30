@@ -27,10 +27,23 @@ export function useResource<T>(
   load: () => Promise<T>,
   deps: DependencyList,
 ): Resource<T> {
-  const [data, setData] = useState<T | null>(null)
-  const [error, setError] = useState<ApiError | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  /*
+   * One state object, not four pieces of state.
+   *
+   * Four made the next state depend on the current one — whether a request is
+   * a first load or a refresh is decided by whether data is already there — and
+   * the only way to read the current one inside a setter is an updater
+   * function. Updaters have to be pure, and React re-runs them; a setLoading
+   * call hidden inside one puts the screen back into loading after it has
+   * finished, so a spinner sits above the data it was waiting for. Held
+   * together, every transition is one pure computation.
+   */
+  const [state, setState] = useState<Omit<Resource<T>, 'reload'>>({
+    data: null,
+    error: null,
+    loading: true,
+    refreshing: false,
+  })
 
   /*
    * The loader is a closure and gets a new identity every render, so it is held
@@ -56,26 +69,20 @@ export function useResource<T>(
   const run = useCallback(() => {
     const mine = ++ticket.current
 
-    setError(null)
     // Which of the two loading states this is depends on whether there is
-    // anything on screen to preserve.
-    setData((current) => {
-      if (current === null) {
-        setLoading(true)
-      } else {
-        setRefreshing(true)
-      }
-      return current
-    })
+    // anything on screen worth preserving.
+    setState((previous) =>
+      previous.data === null
+        ? { data: null, error: null, loading: true, refreshing: false }
+        : { data: previous.data, error: null, loading: false, refreshing: true },
+    )
 
     loadRef.current().then(
       (result) => {
         if (mine !== ticket.current) {
           return
         }
-        setData(result)
-        setLoading(false)
-        setRefreshing(false)
+        setState({ data: result, error: null, loading: false, refreshing: false })
       },
       (cause: unknown) => {
         if (mine !== ticket.current) {
@@ -91,9 +98,12 @@ export function useResource<T>(
          * provider signs out, and this component unmounts before anything can
          * render the error.
          */
-        setError(toApiError(cause))
-        setLoading(false)
-        setRefreshing(false)
+        setState((previous) => ({
+          data: previous.data,
+          error: toApiError(cause),
+          loading: false,
+          refreshing: false,
+        }))
       },
     )
   }, [])
@@ -121,7 +131,7 @@ export function useResource<T>(
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 
-  return { data, error, loading, refreshing, reload: run }
+  return { ...state, reload: run }
 }
 
 /** Anything that is not an ApiError escaped the client, which is a bug there —

@@ -14,8 +14,18 @@
   color: var(--credit);
 }
 
+/*
+ * Canvas with a hairline, not a parchment fill.
+ *
+ * A parchment tint reads as a surface on the auth panel, which is white — and
+ * disappears completely on the dashboard, whose page is parchment, leaving the
+ * message as loose text with no container. The other two tones carry their own
+ * colour and do not have this problem; this one is deliberately neutral, so it
+ * needs a border to exist on any ground.
+ */
 .notice--retry {
-  background: var(--parchment);
+  background: var(--canvas);
+  border: 1px solid var(--separator);
   color: var(--ink);
 }
 
